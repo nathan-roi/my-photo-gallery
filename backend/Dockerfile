@@ -15,4 +15,6 @@ COPY package.json ./
 COPY src ./src
 EXPOSE 3001
 USER node
-CMD ["npm", "start"]
+# node doit être PID 1 : via "npm start", c'est npm qui recevrait le SIGTERM
+# de Kubernetes, et l'arrêt propre ne se déclencherait pas de façon fiable.
+CMD ["node", "src/index.js"]

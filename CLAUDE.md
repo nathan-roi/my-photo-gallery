@@ -45,10 +45,17 @@ Routes :
 - `POST /api/photos` — upload (multer), lecture des dimensions (sharp), envoi dans MinIO, création du document
 - `DELETE /api/photos/:id`
 - `GET /api/photos/:id/file` — proxy du fichier depuis MinIO
-- `PATCH /api/photos/order` — (plus tard) nouvel ordre
-- `GET /api/health` — pour les liveness/readiness probes
+- `PATCH /api/photos/order` — (plus tard) nouvel ordre, pas encore écrit
+- `GET /api/health` — liveness : répond toujours, ne teste pas les dépendances
+- `GET /api/ready` — readiness : vérifie Mongo et le bucket MinIO, 503 sinon
 
-Schéma `Photo` : titre, objectKey (clé dans MinIO), width, height, position, date de création.
+`GET /api/photos` accepte `?album=` pour filtrer. L'upload accepte les champs `file` (obligatoire), `titre` et `album` ; sans titre, le nom du fichier est utilisé. Erreurs : 415 si le fichier n'est pas une image, 413 au-delà de 25 Mo (même limite que `client_max_body_size` dans le proxy), 404 sur un identifiant inconnu ou mal formé.
+
+Schéma `Photo` : titre, **album**, objectKey (clé dans MinIO), mimeType, width, height, position, `createdAt`/`updatedAt` (via `timestamps`).
+
+Le champ de regroupement s'appelle `album` et non `collection` : Mongoose réserve ce nom, qui masquerait l'objet Collection de MongoDB sur les documents (il émet un avertissement « may break some functionality »).
+
+`mimeType` est stocké pour que `GET /api/photos/:id/file` renvoie le bon `Content-Type` sans interroger MinIO en plus.
 
 ## Frontend
 Échafaudé avec `npm create vite@latest frontend -- --template react` (create-vite 9, template `react` en JavaScript — le `--` est obligatoire pour que npm transmette l'option). Pas de Tailwind, du CSS simple.
@@ -98,12 +105,18 @@ Ports publiés sur l'hôte : proxy **8080** (seul point d'entrée de l'app), Mon
 Piège : MongoDB ne crée son utilisateur root qu'au premier démarrage, quand le volume est vide. Changer `MONGO_USER`/`MONGO_PASSWORD` ensuite exige un `docker compose down -v`. MinIO, lui, relit ses identifiants à chaque démarrage.
 
 ## État actuel
-Toute la plomberie de conteneurisation est en place et vérifiée : `docker compose up --build` démarre les 5 services, et `http://localhost:8080` sert le front tandis que `http://localhost:8080/api/health` renvoie `{"status":"ok"}`. Le mode dev fonctionne aussi (API locale sur 3001, Vite sur 5173 avec son proxy).
+Conteneurisation et backend fonctionnels, vérifiés de bout en bout : upload d'une image, lecture des dimensions, stockage dans MinIO, liste triée par position, filtre par album, proxy du fichier (octet pour octet identique à l'original), suppression du document et de l'objet.
 
 Reste à faire :
-- **Backend** — 5 fichiers encore vides : `config.js` (lecture et validation des variables d'env), `db/mongo.js`, `storage/minio.js` (client + création du bucket), `models/Photo.js`, `routes/photos.js`. Seuls `index.js` et `routes/health.js` sont écrits, et au strict minimum. Il manque aussi l'arrêt propre sur `SIGTERM` (sans lui, K8s coupe les requêtes en cours à chaque rolling update) et une sonde de *readiness*.
-- **Frontend** — tout le code applicatif ; `src/App.jsx` est la page de démo de Vite.
+- **Frontend** — tout le code applicatif ; `src/App.jsx` est encore la page de démo de Vite.
+- **Backend** — `PATCH /api/photos/order` (réordonnancement), prévu plus tard.
 - **`k8s/`** — dossier vide, c'est la partie évaluée. À décider avant de commencer : comment les images arrivent dans minikube (construire dans son démon via `eval $(minikube docker-env)` et `imagePullPolicy: Never`, ou passer par un registre).
+
+### Pièges rencontrés, à ne pas réintroduire
+- Le Dockerfile du backend utilise `CMD ["node", "src/index.js"]` et non `npm start` : avec npm, c'est npm qui est PID 1 et qui reçoit le SIGTERM, et l'arrêt propre ne se déclenche pas.
+- `server.close()` ignore les connexions keep-alive inactives, dont celles des sondes de santé. Sans `server.closeIdleConnections()`, l'arrêt traînait 30 s jusqu'au SIGKILL au lieu de 1 s.
+- Pas de `process.exit()` après un `console.log` : la sortie forcée tronque les écritures stdout encore en attente.
+- `ensureBucket()` avale `BucketAlreadyOwnedByYou` : avec plusieurs replicas, les pods créent le bucket en même temps au démarrage. Vérifié avec 3 instances lancées simultanément, bucket absent.
 
 ## Conventions
 - Échanger en français.
