@@ -3,10 +3,6 @@ import mongoose from "mongoose";
 const photoSchema = new mongoose.Schema(
   {
     titre: { type: String, required: true, trim: true },
-
-    // Regroupement libre, au sens photo du terme (« Paysages », « Argentique »).
-    // Nommé `album` et non `collection` : Mongoose réserve ce dernier nom, qui
-    // masquerait l'objet Collection de MongoDB sur les documents.
     album: { type: String, trim: true, default: "", index: true },
 
     // Clé de l'objet dans MinIO, indépendante du titre et de l'album pour que

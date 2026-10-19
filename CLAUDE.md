@@ -100,7 +100,7 @@ Deux fichiers, non versionnés, dont seuls les `.example` sont commités :
 
 Ils décrivent les mêmes identifiants vus de deux endroits : dans le compose l'API joint `mongodb` et `minio:9000` par leur nom de service, en dev local elle les joint sur `localhost` via les ports publiés. Toute modification dans l'un doit être répercutée dans l'autre.
 
-Ports publiés sur l'hôte : proxy **8080** (seul point d'entrée de l'app), Mongo **27017**, MinIO **9100** et console **9101** (et non 9000/9001, souvent déjà pris par un autre MinIO local). Le front et l'API ne publient aucun port : ils passent par le proxy.
+Ports publiés sur l'hôte : proxy **8080** (seul point d'entrée de l'app), Mongo **27017**, MinIO **9000** et console **9001**. Le front et l'API ne publient aucun port : ils passent par le proxy.
 
 Piège : MongoDB ne crée son utilisateur root qu'au premier démarrage, quand le volume est vide. Changer `MONGO_USER`/`MONGO_PASSWORD` ensuite exige un `docker compose down -v`. MinIO, lui, relit ses identifiants à chaque démarrage.
 

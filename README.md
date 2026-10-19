@@ -80,11 +80,11 @@ docker compose up -d mongodb minio
 ```
 
 - MongoDB écoute sur `localhost:27017`
-- MinIO écoute sur `localhost:9100`, sa console web est sur <http://localhost:9101>
+- MinIO écoute sur `localhost:9000`, sa console web est sur <http://localhost:9001>
   (identifiants : `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` du `.env`)
 
-  Les ports publiés sont 9100/9101 et non 9000/9001, souvent déjà occupés par un autre
-  MinIO local. Tous les ports sont réglables dans le `.env`.
+  Tous les ports sont réglables dans le `.env`, utile si un autre service occupe déjà
+  l'un d'eux sur la machine.
 
 Le bucket est créé automatiquement par l'API à son démarrage.
 
@@ -129,7 +129,7 @@ Tout passe par le reverse proxy, sur un seul port :
 
 - Application : <http://localhost:8080>
 - API : <http://localhost:8080/api/health>
-- Console MinIO : <http://localhost:9101>
+- Console MinIO : <http://localhost:9001>
 
 Le front et l'API ne publient aucun port sur l'hôte : ils ne sont joignables qu'à travers le
 proxy (et entre eux, par le réseau interne du compose).
