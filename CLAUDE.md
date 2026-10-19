@@ -17,18 +17,24 @@ Galerie photo en ligne (l'un des membres du binôme est photographe amateur).
 ## Architecture : 4 conteneurs
 | Conteneur | Techno | Objet K8s |
 |---|---|---|
-| Front | React + Vite, buildé puis servi par Nginx (Dockerfile multi-étapes) | Deployment + Service |
+| Front | React 19 + Vite 8 en SPA (JavaScript, pas TS), buildé puis servi par nginx (Dockerfile multi-étapes) | Deployment + Service |
 | API | Node.js + Express (ES modules) | Deployment (2+ replicas, sans état) + Service |
 | Base | MongoDB + Mongoose (métadonnées) | StatefulSet + volumeClaimTemplates + Service headless |
 | Stockage | MinIO (fichiers images) | StatefulSet + volumeClaimTemplates + Service |
 
 Autres objets K8s prévus : Namespace, ConfigMap (config de l'API), Secret (identifiants Mongo/MinIO, non versionné : seul `secrets.example.yaml` est commité), Ingress (`/` → front, `/api` → API). Kustomize via `kubectl apply -k k8s/`. Tests sur minikube avec l'addon ingress-nginx.
 
+En plus de ces 4 conteneurs, le `docker-compose.yml` a un 5e service `proxy` (nginx) qui tient le rôle de l'Ingress en local : `/` → front, `/api` → API, donc une seule origine pour le navigateur. Il n'a pas d'équivalent dans `k8s/`, où l'Ingress le remplace.
+
 ### Choix de conception
 - Les photos sont dans MinIO, pas dans un volume monté sur l'API : l'API reste sans état et peut avoir plusieurs replicas (un PVC ReadWriteOnce ne peut pas être partagé entre nœuds).
 - Le navigateur récupère les images via un **proxy dans l'API** (`GET /api/photos/:id/file` lit dans MinIO et renvoie le fichier). Pas d'URL présignées pour l'instant, pour ne pas exposer MinIO via l'Ingress.
 - L'API crée le bucket MinIO au démarrage s'il n'existe pas.
 - Évolution possible : worker de génération de miniatures avec `sharp`.
+- **Une seule origine dans les trois environnements** (dev via le proxy Vite, compose via le service `proxy`, K8s via l'Ingress) : le front appelle toujours l'API en relatif (`fetch("/api/photos")`), il n'y a donc jamais d'URL de base à configurer ni de CORS à activer.
+- **Front en SPA, pas en SSR.** Le conteneur du front ne contient que des fichiers statiques servis par nginx : sans état, sans variable d'environnement, sans runtime Node. Un premier essai avec React Router en mode framework (SSR) a été abandonné : le SSR coûtait un conteneur Node et un double chemin de données (loader côté serveur + fetch navigateur) pour un bénéfice nul ici (SEO, premier affichage).
+- **Pas de React Router pour l'instant** : la galerie est une page unique. À ajouter en mode *data* le jour où il faudra des URL partageables par photo.
+- `/api/health` ne teste volontairement ni Mongo ni MinIO : c'est une sonde de *liveness*, elle doit répondre même si les dépendances sont indisponibles, sinon K8s tuerait le pod de l'API à chaque hoquet de la base. Une sonde de *readiness* distincte, qui vérifie les dépendances, reste à écrire.
 
 ## Backend
 Dépendances : express, multer (upload), sharp (dimensions des images), minio (SDK), mongoose ; nodemon en dev.
@@ -45,22 +51,27 @@ Routes :
 Schéma `Photo` : titre, objectKey (clé dans MinIO), width, height, position, date de création.
 
 ## Frontend
-React + Vite. Proxy `/api` vers le backend dans `vite.config.js` en dev. `nginx.conf` avec fallback vers `index.html`. Drag & drop futur : dnd-kit.
-Composants : Gallery (grille justifiée), PhotoCard, UploadForm, Lightbox.
+Échafaudé avec `npm create vite@latest frontend -- --template react` (create-vite 9, template `react` en JavaScript — le `--` est obligatoire pour que npm transmette l'option). Pas de Tailwind, du CSS simple.
+Scripts : `npm run dev` (port 5173), `npm run build` (sort dans `dist/`), `npm run preview`, `npm run lint` (oxlint).
+`vite.config.js` : proxy `/api` vers `http://localhost:3001` en dev. `nginx.conf` : fallback vers `index.html` (indispensable pour le routage SPA) et cache long sur `/assets/`. Drag & drop futur : dnd-kit.
+Composants à écrire : Gallery (grille justifiée), PhotoCard, UploadForm, Lightbox.
+`src/App.jsx` est encore la page de démonstration de Vite.
 
 ## Arborescence
 ```
-galerie-photo/
+my-photo-gallery/
 ├── README.md
 ├── CLAUDE.md
 ├── docker-compose.yml
-├── .env.example
+├── .env.example            # identifiants et ports du compose (copier en .env)
 ├── .gitignore
+├── proxy/
+│   └── nginx.conf          # / -> front, /api -> API (rôle de l'Ingress en local)
 ├── frontend/
 │   ├── Dockerfile, nginx.conf, .dockerignore, package.json, vite.config.js, index.html
 │   └── src/ (main.jsx, App.jsx, api/photos.js, components/, styles/gallery.css)
 ├── backend/
-│   ├── Dockerfile, .dockerignore, package.json
+│   ├── Dockerfile, .dockerignore, package.json, .env.example
 │   └── src/ (index.js, config.js, db/mongo.js, storage/minio.js, models/Photo.js, routes/photos.js, routes/health.js)
 └── k8s/
     ├── kustomization.yaml, namespace.yaml, secrets.example.yaml, configmap.yaml, ingress.yaml
@@ -71,13 +82,28 @@ galerie-photo/
 ```
 
 ## Ordre de travail
-1. Backend et frontend en local (`npm run dev`), avec seulement MongoDB et MinIO dans Docker.
-2. Dockerfiles + `docker-compose.yml` avec les 4 conteneurs.
+1. ~~Backend et frontend en local (`npm run dev`), avec seulement MongoDB et MinIO dans Docker.~~ (plomberie en place, code applicatif à écrire)
+2. ~~Dockerfiles + `docker-compose.yml`.~~ Fait.
 3. Manifestes `k8s/` en dernier (traduction du compose), test sur minikube.
 
+## Variables d'environnement
+Deux fichiers, non versionnés, dont seuls les `.example` sont commités :
+- `.env` à la racine — lu automatiquement par `docker compose` pour les `${VAR}` du compose ;
+- `backend/.env` — lu par `npm run dev` via `node --env-file-if-exists=.env` (pas de dépendance `dotenv`).
+
+Ils décrivent les mêmes identifiants vus de deux endroits : dans le compose l'API joint `mongodb` et `minio:9000` par leur nom de service, en dev local elle les joint sur `localhost` via les ports publiés. Toute modification dans l'un doit être répercutée dans l'autre.
+
+Ports publiés sur l'hôte : proxy **8080** (seul point d'entrée de l'app), Mongo **27017**, MinIO **9100** et console **9101** (et non 9000/9001, souvent déjà pris par un autre MinIO local). Le front et l'API ne publient aucun port : ils passent par le proxy.
+
+Piège : MongoDB ne crée son utilisateur root qu'au premier démarrage, quand le volume est vide. Changer `MONGO_USER`/`MONGO_PASSWORD` ensuite exige un `docker compose down -v`. MinIO, lui, relit ses identifiants à chaque démarrage.
+
 ## État actuel
-- Backend initialisé : `npm init`, `type: module`, dépendances installées, fichiers vides créés selon l'arborescence.
-- Le dossier `k8s/` n'est pas encore créé (volontairement, voir ordre de travail).
+Toute la plomberie de conteneurisation est en place et vérifiée : `docker compose up --build` démarre les 5 services, et `http://localhost:8080` sert le front tandis que `http://localhost:8080/api/health` renvoie `{"status":"ok"}`. Le mode dev fonctionne aussi (API locale sur 3001, Vite sur 5173 avec son proxy).
+
+Reste à faire :
+- **Backend** — 5 fichiers encore vides : `config.js` (lecture et validation des variables d'env), `db/mongo.js`, `storage/minio.js` (client + création du bucket), `models/Photo.js`, `routes/photos.js`. Seuls `index.js` et `routes/health.js` sont écrits, et au strict minimum. Il manque aussi l'arrêt propre sur `SIGTERM` (sans lui, K8s coupe les requêtes en cours à chaque rolling update) et une sonde de *readiness*.
+- **Frontend** — tout le code applicatif ; `src/App.jsx` est la page de démo de Vite.
+- **`k8s/`** — dossier vide, c'est la partie évaluée. À décider avant de commencer : comment les images arrivent dans minikube (construire dans son démon via `eval $(minikube docker-env)` et `imagePullPolicy: Never`, ou passer par un registre).
 
 ## Conventions
 - Échanger en français.
