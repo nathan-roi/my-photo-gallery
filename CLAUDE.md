@@ -34,7 +34,7 @@ En plus de ces 4 conteneurs, le `docker-compose.yml` a un 5e service `proxy` (ng
 - **Une seule origine dans les trois environnements** (dev via le proxy Vite, compose via le service `proxy`, K8s via l'Ingress) : le front appelle toujours l'API en relatif (`fetch("/api/photos")`), il n'y a donc jamais d'URL de base à configurer ni de CORS à activer.
 - **Front en SPA, pas en SSR.** Le conteneur du front ne contient que des fichiers statiques servis par nginx : sans état, sans variable d'environnement, sans runtime Node. Un premier essai avec React Router en mode framework (SSR) a été abandonné : le SSR coûtait un conteneur Node et un double chemin de données (loader côté serveur + fetch navigateur) pour un bénéfice nul ici (SEO, premier affichage).
 - **Pas de React Router pour l'instant** : la galerie est une page unique. À ajouter en mode *data* le jour où il faudra des URL partageables par photo.
-- `/api/health` ne teste volontairement ni Mongo ni MinIO : c'est une sonde de *liveness*, elle doit répondre même si les dépendances sont indisponibles, sinon K8s tuerait le pod de l'API à chaque hoquet de la base. Une sonde de *readiness* distincte, qui vérifie les dépendances, reste à écrire.
+- `/api/health` ne teste volontairement ni Mongo ni MinIO : c'est une sonde de *liveness*, elle doit répondre même si les dépendances sont indisponibles, sinon K8s tuerait le pod de l'API à chaque hoquet de la base. C'est `/api/ready` qui vérifie les dépendances.
 
 ## Backend
 Dépendances : express, multer (upload), sharp (dimensions des images), minio (SDK), mongoose ; nodemon en dev.
@@ -61,8 +61,9 @@ Le champ de regroupement s'appelle `album` et non `collection` : Mongoose réser
 Échafaudé avec `npm create vite@latest frontend -- --template react` (create-vite 9, template `react` en JavaScript — le `--` est obligatoire pour que npm transmette l'option). Pas de Tailwind, du CSS simple.
 Scripts : `npm run dev` (port 5173), `npm run build` (sort dans `dist/`), `npm run preview`, `npm run lint` (oxlint).
 `vite.config.js` : proxy `/api` vers `http://localhost:3001` en dev. `nginx.conf` : fallback vers `index.html` (indispensable pour le routage SPA) et cache long sur `/assets/`. Drag & drop futur : dnd-kit.
-Composants à écrire : Gallery (grille justifiée), PhotoCard, UploadForm, Lightbox.
-`src/App.jsx` est encore la page de démonstration de Vite.
+Composants écrits : Gallery (récupération et états) et PhotoCard. Restent UploadForm et Lightbox.
+
+La grille justifiée est obtenue en CSS seul, sans calcul en JavaScript : sur chaque cellule, `flex-basis` et `flex-grow` sont tous deux proportionnels au ratio de la photo, donc flexbox garde la largeur finale proportionnelle au ratio, et `aspect-ratio` en déduit une hauteur identique pour toutes les photos d'une même ligne. Le ratio arrive en variable CSS inline (`--ratio`) depuis les dimensions lues à l'upload. `--espace` et `--hauteur-base`, en haut de `.gallery`, sont les deux seuls réglages ; sur petit écran, seule `--hauteur-base` change. Un remplisseur `.gallery::after` au `flex-grow` énorme absorbe l'espace libre de la dernière ligne, qui garderait sinon une hauteur bien supérieure aux autres.
 
 ## Arborescence
 ```
@@ -108,7 +109,7 @@ Piège : MongoDB ne crée son utilisateur root qu'au premier démarrage, quand l
 Conteneurisation et backend fonctionnels, vérifiés de bout en bout : upload d'une image, lecture des dimensions, stockage dans MinIO, liste triée par position, filtre par album, proxy du fichier (octet pour octet identique à l'original), suppression du document et de l'objet.
 
 Reste à faire :
-- **Frontend** — tout le code applicatif ; `src/App.jsx` est encore la page de démo de Vite.
+- **Frontend** — `UploadForm` (uploader depuis le site est une exigence de l'énoncé) et `Lightbox`.
 - **Backend** — `PATCH /api/photos/order` (réordonnancement), prévu plus tard.
 - **`k8s/`** — dossier vide, c'est la partie évaluée. À décider avant de commencer : comment les images arrivent dans minikube (construire dans son démon via `eval $(minikube docker-env)` et `imagePullPolicy: Never`, ou passer par un registre).
 

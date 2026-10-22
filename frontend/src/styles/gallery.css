@@ -1,19 +1,44 @@
-/* Grille de la galerie : 3 photos par ligne, centrée dans la page.
-   Chaque cellule garde le format de sa photo grâce aux dimensions lues à
-   l'upload — première étape vers la grille justifiée (même hauteur par ligne). */
+/* Grille justifiée : chaque ligne est remplie sur toute la largeur, toutes les
+   photos d'une ligne ont la même hauteur, et la largeur de chacune est
+   proportionnelle à son ratio. L'écart est donc le même partout.
+
+   Le calcul tient en deux déclarations. flex-basis ET flex-grow sont tous deux
+   proportionnels au ratio : flexbox distribue l'espace libre au prorata de
+   flex-grow, donc la largeur finale reste proportionnelle au ratio. Comme
+   aspect-ratio déduit la hauteur de la largeur, hauteur = largeur / ratio est
+   la même pour toutes les photos de la ligne. */
 .gallery {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  align-items: start;
-  gap: 1.25rem;
+  --hauteur-base: 15rem;
+  --espace: 6px;
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espace);
 }
 
 .photo-card {
+  /* --ratio est posé en style inline par PhotoCard, depuis les dimensions
+     lues à l'upload. */
+  flex-grow: var(--ratio);
+  flex-basis: calc(var(--ratio) * var(--hauteur-base));
+  aspect-ratio: var(--ratio);
+
+  /* Sans ça, la largeur intrinsèque de l'image empêcherait le retour à la
+     ligne : un flex item ne descend pas sous sa taille min-content. */
+  min-width: 0;
+
   margin: 0;
-  overflow: hidden;
-  border-radius: 6px;
-  background: var(--fond-carte);
   position: relative;
+  overflow: hidden;
+  background: var(--fond-carte);
+}
+
+/* Absorbe l'espace libre de la dernière ligne : sans ce remplisseur, deux
+   photos seules s'étireraient sur toute la largeur et seraient bien plus
+   hautes que les lignes précédentes. */
+.gallery::after {
+  content: "";
+  flex-grow: 1000000;
 }
 
 .photo-card img {
@@ -51,14 +76,16 @@
   color: var(--texte-erreur);
 }
 
+/* Sur petit écran, on réduit la hauteur de référence : les lignes contiennent
+   alors naturellement moins de photos, sans toucher au reste du calcul. */
 @media (width <= 900px) {
   .gallery {
-    grid-template-columns: repeat(2, 1fr);
+    --hauteur-base: 11rem;
   }
 }
 
 @media (width <= 600px) {
   .gallery {
-    grid-template-columns: 1fr;
+    --hauteur-base: 7rem;
   }
 }
