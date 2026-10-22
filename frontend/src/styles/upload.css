@@ -1,0 +1,284 @@
+.upload {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 3rem;
+}
+
+/* Zone de dépôt. C'est un <label> : le clic et la touche Entrée ouvrent le
+   sélecteur de fichiers nativement. */
+.depot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2.5rem 1.5rem;
+  border: 2px dashed color-mix(in srgb, var(--texte-discret) 45%, transparent);
+  border-radius: 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.depot:hover,
+.depot:focus-within {
+  border-color: var(--texte-discret);
+}
+
+.depot--inactif {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.depot--survol {
+  border-color: var(--texte);
+  border-style: solid;
+  background: var(--fond-carte);
+}
+
+/* Le champ reste accessible au clavier : on le masque sans display:none, qui
+   le retirerait de l'ordre de tabulation. */
+.depot input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.depot-titre {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.depot-aide,
+.upload-aide {
+  font-size: 0.85rem;
+  color: var(--texte-discret);
+}
+
+.upload-refus {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--texte-erreur);
+  background: color-mix(in srgb, var(--texte-erreur) 10%, transparent);
+}
+
+.upload-entete {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: var(--texte-discret);
+}
+
+/* Vignettes carrées, en lignes qui se remplissent d'elles-mêmes : ici on ne
+   cherche pas la justification de la galerie, juste un inventaire lisible. */
+.upload-apercus {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.upload-apercus li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  font-size: 0.75rem;
+}
+
+.upload-apercus img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--fond-carte);
+}
+
+.apercu-nom {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apercu-taille {
+  color: var(--texte-discret);
+}
+
+.apercu-retirer {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+  color: #fff;
+  background: rgb(0 0 0 / 60%);
+  cursor: pointer;
+}
+
+.apercu-retirer:hover,
+.apercu-retirer:focus-visible {
+  background: rgb(0 0 0 / 85%);
+}
+
+.upload-album {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.upload-album label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.upload-album input {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--texte-discret) 45%, transparent);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--texte);
+  background: var(--fond);
+}
+
+.upload-album input:focus-visible {
+  outline: 2px solid var(--texte-discret);
+  outline-offset: 1px;
+}
+
+.upload-aide {
+  margin: 0;
+}
+
+.bouton {
+  align-self: flex-start;
+  padding: 0.55rem 1.25rem;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--fond);
+  background: var(--texte);
+  cursor: pointer;
+}
+
+.bouton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.bouton-discret {
+  padding: 0;
+  border: none;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--texte-discret);
+  background: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.bouton-discret:hover,
+.bouton-discret:focus-visible {
+  color: var(--texte);
+}
+
+/* Liste déroulante éditable. Le conteneur porte le positionnement pour que la
+   liste se place sous le champ sans décaler la suite du formulaire. */
+.champ-album {
+  position: relative;
+  width: min(20rem, 100%);
+}
+
+.champ-album input {
+  width: 100%;
+  /* Place pour le chevron. */
+  padding-right: 2rem;
+}
+
+.champ-album-bascule {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 100%;
+  padding: 0;
+  border: none;
+  font-size: 0.7rem;
+  color: var(--texte-discret);
+  background: none;
+  cursor: pointer;
+}
+
+.champ-album-liste {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  max-height: 14rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  border: 1px solid color-mix(in srgb, var(--texte-discret) 35%, transparent);
+  border-radius: 6px;
+  list-style: none;
+  background: var(--fond);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+.champ-album-liste li {
+  padding: 0.4rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* Une seule classe pour le survol et la navigation au clavier : les deux
+   désignent la même notion d'option courante. */
+.champ-album-liste li.actif {
+  background: var(--fond-carte);
+}
+
+.champ-album-liste li[aria-selected="true"] {
+  font-weight: 600;
+}
+
+.upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.upload-progression {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--texte-discret);
+}
+
+.bouton-discret:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.apercu-retirer:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}

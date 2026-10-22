@@ -23,6 +23,14 @@
 }
 
 
+html {
+  /* Réserve en permanence la place de la barre de défilement. Sans ça,
+     l'ouverture de la modale — qui arrête Lenis, lequel passe html en
+     overflow: clip — ferait disparaître la barre et décalerait tout le
+     contenu d'une quinzaine de pixels. */
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;

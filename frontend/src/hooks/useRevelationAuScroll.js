@@ -6,20 +6,24 @@ import { useEffect, useRef, useState } from "react";
  * se rejoue quand on repasse dessus.
  * Renvoie la référence à poser sur l'élément et un booléen de visibilité.
  */
+function animationsLimitees() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 export function useRevelationAuScroll() {
   const reference = useRef(null);
-  const [visible, setVisible] = useState(false);
+
+  // Si l'utilisateur demande à limiter les animations, l'élément est visible
+  // dès le premier rendu : la valeur est connue avant tout effet, autant
+  // initialiser l'état avec plutôt que de déclencher un second rendu.
+  const [visible, setVisible] = useState(animationsLimitees);
 
   useEffect(() => {
     const element = reference.current;
     if (!element) return;
 
-    // Si l'utilisateur demande à limiter les animations, tout est affiché
-    // d'emblée, sans observation ni transition.
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setVisible(true);
-      return;
-    }
+    // Dans ce cas, rien à observer : tout est déjà affiché.
+    if (animationsLimitees()) return;
 
     const observateur = new IntersectionObserver(
       (entrees) => {

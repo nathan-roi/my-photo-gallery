@@ -1,0 +1,75 @@
+/* <dialog> natif : showModal() fournit le piège de focus, Échap et l'inertie de
+   l'arrière-plan. Il faut en revanche tout habiller, le style par défaut étant
+   une boîte centrée sans marge intérieure. */
+.modale {
+  width: min(44rem, calc(100vw - 2rem));
+  max-height: min(85vh, 50rem);
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  color: var(--texte);
+  background: var(--fond);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 28%);
+}
+
+.modale::backdrop {
+  background: rgb(0 0 0 / 45%);
+  backdrop-filter: blur(2px);
+}
+
+/* Le défilement est porté par le contenu et non par le <dialog>, pour que
+   l'en-tête reste collé en haut de la fenêtre.
+   data-lenis-prevent : sans cet attribut, Lenis détournerait la molette vers la
+   page au lieu de faire défiler la modale. */
+.modale-contenu {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.modale-entete {
+  position: sticky;
+  top: -1.5rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: -1.5rem -1.5rem 1.25rem;
+  padding: 1.5rem 1.5rem 0.75rem;
+  background: var(--fond);
+}
+
+.modale-entete h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.modale-fermer {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--texte-discret);
+  background: none;
+  cursor: pointer;
+}
+
+.modale-fermer:hover,
+.modale-fermer:focus-visible {
+  color: var(--texte);
+  background: var(--fond-carte);
+}
+
+/* Dans la modale, le formulaire n'a plus besoin de sa marge basse : la marge
+   intérieure de la fenêtre s'en charge. */
+.modale .upload {
+  margin-bottom: 0;
+}

@@ -5,9 +5,37 @@
   padding: 2.5rem 1.25rem 4rem;
 }
 
+/* Titre et bouton sur la même ligne, le bouton poussé à droite. */
+.app-entete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
 .app-titre {
-  margin: 0 0 2rem;
+  margin: 0;
   font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.bouton-ajouter {
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--texte-discret) 40%, transparent);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--texte);
+  background: var(--fond);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.bouton-ajouter:hover,
+.bouton-ajouter:focus-visible {
+  border-color: var(--texte-discret);
+  background: var(--fond-carte);
 }

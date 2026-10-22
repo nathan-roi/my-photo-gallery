@@ -64,7 +64,8 @@ Le champ de regroupement s'appelle `album` et non `collection` : Mongoose réser
 Scripts : `npm run dev` (port 5173), `npm run build` (sort dans `dist/`), `npm run preview`, `npm run lint` (oxlint).
 `vite.config.js` : proxy `/api` vers `http://localhost:3001` en dev. `nginx.conf` : fallback vers `index.html` (indispensable pour le routage SPA) et cache long sur `/assets/`. Drag & drop futur : dnd-kit.
 Dépendance : lenis (défilement lissé).
-Composants écrits : Gallery (récupération, regroupement, états), AlbumNav, AlbumSection et PhotoCard. Restent UploadForm et Lightbox.
+Composants écrits : Gallery (présentationnel), AlbumNav, AlbumSection, PhotoCard, UploadForm, ChampAlbum et ModaleUpload. Reste Lightbox.
+Hooks : `usePhotos` (récupération, regroupement en sections, liste des albums, `rafraichir`) appelé par `App` ; `useRevelationAuScroll` (fondu à l'entrée).
 
 La galerie est découpée en **une section par album**, avec une barre de navigation collée en haut. Les photos sans album vont dans une section « Autres », placée en dernier ; les autres albums sont triés par nom avec un `Intl.Collator("fr")`. Chaque section a son ancre (`#album-<nom-sans-accent>`) et sa propre grille justifiée. Attention : un album nommé littéralement « Autres » fusionnerait avec la section des photos sans album.
 
@@ -75,6 +76,15 @@ La galerie est découpée en **une section par album**, avec une barre de naviga
 - le wrapper React lance seul sa boucle d'animation (`autoRaf` vaut `true` dans ses props), contrairement à ce que suggère l'exemple du README — dont le `update` ne se rappelle jamais ;
 - **pas de `scroll-behavior: smooth`** : Lenis repositionne le défilement à chaque image, le lissage natif par-dessus ferait saccader ;
 - pas besoin de `anchors: { offset }` : `scrollTo` lit le `scroll-margin-top` calculé de l'élément visé, c'est donc `gallery.css` qui règle le décalage sous la barre. Si un jour tu utilises `offset`, attention au signe : le code fait `target += offset`, donc une valeur positive descend plus bas, contrairement à ce que laisse croire la comparaison du README avec `scroll-padding-top`.
+
+**Formulaire d'upload**, dans une fenêtre `<dialog>` ouverte par un bouton à droite du titre :
+- l'élément `<dialog>` natif avec `showModal()` apporte le piège de focus, Échap et l'inertie de l'arrière-plan ; l'événement `close` est branché sur la fermeture, sinon un Échap désynchroniserait l'état React et le bouton ne rouvrirait plus rien ;
+- **Lenis et la modale** : `lenis.stop()` à l'ouverture, sinon l'arrière-plan défile derrière la fenêtre, et `data-lenis-prevent` sur le contenu pour que la molette y défile. Effet de bord à connaître : `stop()` passe `html` en `overflow: clip`, d'où le `scrollbar-gutter: stable` dans `index.css` qui évite le décalage du contenu à l'ouverture ;
+- `ChampAlbum` est une liste déroulante **éditable** (motif ARIA combobox, écrite à la main : HTML n'a pas de `select` éditable). Elle propose les albums existants, filtre à la saisie sans tenir compte de la casse ni des accents, et crée un album si rien ne correspond. La sélection se fait au `pointerdown` et non au `click`, que la fermeture au clic extérieur devancerait ; Entrée fait un `preventDefault` quand la liste est ouverte, sinon le formulaire serait envoyé ;
+- un nom saisi qui correspond à un album existant à la casse ou aux accents près **reprend l'orthographe existante**, sans quoi « paysages » créerait une seconde section à côté de « Paysages » ;
+- validation côté client aux mêmes limites que l'API : images seulement, 25 Mo. Les aperçus sont des URL d'objets, libérées au retrait et au démontage.
+
+**L'envoi est séquentiel, et ce n'est pas optionnel** : l'API calcule `position` avec un `max + 1`, donc des envois parallèles lisent le même maximum. Vérifié — trois requêtes simultanées donnent les positions [8, 9, 9]. Ne pas « optimiser » en `Promise.all` sans corriger d'abord l'API (compteur atomique ou position calculée à l'insertion). Chaque photo envoyée est retirée du formulaire au fur et à mesure, donc un échec en cours de route ne laisse que les fichiers restants, réessayables sans doublon ; la fenêtre ne se ferme que si tout est passé. `envoyerPhoto` retombe sur le code de statut quand le corps n'est pas du JSON : un 413 vient du proxy nginx et renvoie du HTML.
 
 **Fondu à l'entrée dans la fenêtre** : le hook `useRevelationAuScroll` suit la visibilité des sections avec un `IntersectionObserver` et pose la classe `album--visible`. Le fondu rejoue à chaque passage, l'observation ne s'arrêtant jamais. Seuil à 0 avec `rootMargin: "0px 0px -12% 0px"` et non un pourcentage de l'élément : une section plus haute que la fenêtre ne pourrait jamais en afficher 15 % et ne serait jamais révélée. La transparence laisse voir le fond de page, d'où l'apparition « depuis le blanc » en thème clair.
 
@@ -124,7 +134,7 @@ Piège : MongoDB ne crée son utilisateur root qu'au premier démarrage, quand l
 Conteneurisation et backend fonctionnels, vérifiés de bout en bout : upload d'une image, lecture des dimensions, stockage dans MinIO, liste triée par position, filtre par album, proxy du fichier (octet pour octet identique à l'original), suppression du document et de l'objet.
 
 Reste à faire :
-- **Frontend** — `UploadForm` (uploader depuis le site est une exigence de l'énoncé) et `Lightbox`.
+- **Frontend** — `Lightbox`. Le formulaire d'upload est fait. Pas de champ titre : l'API retient le nom du fichier, ce qui suffit pour un envoi groupé.
 - **Performance du défilement** — deux réglages identifiés mais pas encore appliqués, faute d'avoir pu juger à l'écran : le `backdrop-filter: blur(8px)` de `.album-nav` est le premier suspect de saccades (sur un élément collé, le flou est recalculé à chaque image, et Lenis repositionne à chaque image), et `lerp` laissé à 0,1 donne une sensation de flottement qu'un passage à 0,15–0,2 atténuerait.
 - **Miniatures** — les images sont servies en pleine résolution, 4 à 7 fois plus grandes que leur taille d'affichage. Sans conséquence sur des images de test légères, mais ce sera la cause dominante de saccades avec de vraies photos : c'est l'argument pour avancer le worker `sharp`.
 - **Backend** — `PATCH /api/photos/order` (réordonnancement), prévu plus tard.

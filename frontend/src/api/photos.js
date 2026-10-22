@@ -18,3 +18,24 @@ export async function listerPhotos({ album } = {}) {
 export function urlFichier(photo) {
   return `${BASE}/${photo._id}/file`;
 }
+
+export async function envoyerPhoto({ fichier, album, titre }) {
+  const corps = new FormData();
+  corps.append("file", fichier);
+  // Sans titre, l'API retient le nom du fichier.
+  if (titre) corps.append("titre", titre);
+  if (album) corps.append("album", album);
+
+  // Pas de Content-Type explicite : le navigateur doit le poser lui-même pour y
+  // placer la frontière du multipart.
+  const reponse = await fetch(BASE, { method: "POST", body: corps });
+
+  if (!reponse.ok) {
+    // L'API répond { error } ; le proxy nginx, lui, renvoie du HTML sur un 413,
+    // d'où le repli sur le code de statut.
+    const details = await reponse.json().catch(() => null);
+    throw new Error(details?.error ?? `Envoi refusé (HTTP ${reponse.status})`);
+  }
+
+  return reponse.json();
+}
