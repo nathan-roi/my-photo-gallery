@@ -26,6 +26,8 @@ Autres objets K8s prévus : Namespace, ConfigMap (config de l'API), Secret (iden
 
 En plus de ces 4 conteneurs, le `docker-compose.yml` a un 5e service `proxy` (nginx) qui tient le rôle de l'Ingress en local : `/` → front, `/api` → API, donc une seule origine pour le navigateur. Il n'a pas d'équivalent dans `k8s/`, où l'Ingress le remplace.
 
+Le compose a aussi un service `mongo-express` (interface web pour MongoDB, sur le port 8081), derrière le profil `outils` : `docker compose up` ne le démarre pas, il faut le nommer explicitement (`docker compose up -d mongo-express`). C'est un outil de développement, sans équivalent dans `k8s/` lui non plus.
+
 ### Choix de conception
 - Les photos sont dans MinIO, pas dans un volume monté sur l'API : l'API reste sans état et peut avoir plusieurs replicas (un PVC ReadWriteOnce ne peut pas être partagé entre nœuds).
 - Le navigateur récupère les images via un **proxy dans l'API** (`GET /api/photos/:id/file` lit dans MinIO et renvoie le fichier). Pas d'URL présignées pour l'instant, pour ne pas exposer MinIO via l'Ingress.

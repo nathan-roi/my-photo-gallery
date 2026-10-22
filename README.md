@@ -109,6 +109,29 @@ Le serveur de dev Vite relaie `/api` vers `http://localhost:3001` (voir `server.
 (`fetch("/api/photos")`), exactement comme derrière le proxy nginx et l'Ingress. Aucune
 configuration CORS n'est nécessaire, dans aucun environnement.
 
+### Inspecter la base de données
+
+Un service `mongo-express` fournit une interface web pour parcourir MongoDB. C'est un
+outil de développement, placé derrière un profil Compose : `docker compose up` ne le
+démarre pas. Pour le lancer :
+
+```bash
+docker compose up -d mongo-express
+```
+
+Puis <http://localhost:8081> — pas d'authentification, l'interface n'étant publiée que
+sur la machine locale.
+
+Sans interface, `mongosh` est déjà présent dans l'image MongoDB :
+
+```bash
+docker compose exec mongodb mongosh \
+  "mongodb://photo:changeme@localhost:27017/photogallery?authSource=admin"
+```
+
+Le `?authSource=admin` est indispensable : l'utilisateur est créé dans la base `admin`,
+pas dans `photogallery`.
+
 ### Arrêter l'infrastructure
 
 ```bash

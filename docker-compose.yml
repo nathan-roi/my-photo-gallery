@@ -82,6 +82,24 @@ services:
       - frontend
       - backend
 
+  # Interface web pour inspecter MongoDB, l'équivalent de la console MinIO.
+  # Outil de développement, pas un morceau de l'application : il est derrière un
+  # profil, donc `docker compose up` ne le démarre pas, et il n'a pas d'équivalent
+  # dans k8s/. À lancer avec : docker compose up -d mongo-express
+  mongo-express:
+    image: mongo-express:latest
+    profiles: [outils]
+    restart: unless-stopped
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin
+      # Pas d'authentification : l'interface n'est publiée que sur la machine locale.
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "${MONGO_EXPRESS_PORT:-8081}:8081"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
 volumes:
   mongo-data:
   minio-data:
