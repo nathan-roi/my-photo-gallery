@@ -63,7 +63,20 @@ Le champ de regroupement s'appelle `album` et non `collection` : Mongoose réser
 Échafaudé avec `npm create vite@latest frontend -- --template react` (create-vite 9, template `react` en JavaScript — le `--` est obligatoire pour que npm transmette l'option). Pas de Tailwind, du CSS simple.
 Scripts : `npm run dev` (port 5173), `npm run build` (sort dans `dist/`), `npm run preview`, `npm run lint` (oxlint).
 `vite.config.js` : proxy `/api` vers `http://localhost:3001` en dev. `nginx.conf` : fallback vers `index.html` (indispensable pour le routage SPA) et cache long sur `/assets/`. Drag & drop futur : dnd-kit.
-Composants écrits : Gallery (récupération et états) et PhotoCard. Restent UploadForm et Lightbox.
+Dépendance : lenis (défilement lissé).
+Composants écrits : Gallery (récupération, regroupement, états), AlbumNav, AlbumSection et PhotoCard. Restent UploadForm et Lightbox.
+
+La galerie est découpée en **une section par album**, avec une barre de navigation collée en haut. Les photos sans album vont dans une section « Autres », placée en dernier ; les autres albums sont triés par nom avec un `Intl.Collator("fr")`. Chaque section a son ancre (`#album-<nom-sans-accent>`) et sa propre grille justifiée. Attention : un album nommé littéralement « Autres » fusionnerait avec la section des photos sans album.
+
+**Défilement lissé par Lenis**, monté en `<ReactLenis root>` dans `App.jsx` :
+- `anchors: true` est **obligatoire** : Lenis bloque les liens d'ancre par défaut, et sans cette option la barre d'albums ne ferait rien ;
+- `syncTouch: true` pour l'inertie au doigt, qui n'est pas activée par défaut ;
+- `smoothWheel` et `respectReducedMotion` sont déjà à `true` par défaut, rien à ajouter pour la molette ni pour l'accessibilité ;
+- le wrapper React lance seul sa boucle d'animation (`autoRaf` vaut `true` dans ses props), contrairement à ce que suggère l'exemple du README — dont le `update` ne se rappelle jamais ;
+- **pas de `scroll-behavior: smooth`** : Lenis repositionne le défilement à chaque image, le lissage natif par-dessus ferait saccader ;
+- pas besoin de `anchors: { offset }` : `scrollTo` lit le `scroll-margin-top` calculé de l'élément visé, c'est donc `gallery.css` qui règle le décalage sous la barre. Si un jour tu utilises `offset`, attention au signe : le code fait `target += offset`, donc une valeur positive descend plus bas, contrairement à ce que laisse croire la comparaison du README avec `scroll-padding-top`.
+
+**Fondu à l'entrée dans la fenêtre** : le hook `useRevelationAuScroll` suit la visibilité des sections avec un `IntersectionObserver` et pose la classe `album--visible`. Le fondu rejoue à chaque passage, l'observation ne s'arrêtant jamais. Seuil à 0 avec `rootMargin: "0px 0px -12% 0px"` et non un pourcentage de l'élément : une section plus haute que la fenêtre ne pourrait jamais en afficher 15 % et ne serait jamais révélée. La transparence laisse voir le fond de page, d'où l'apparition « depuis le blanc » en thème clair.
 
 La grille justifiée est obtenue en CSS seul, sans calcul en JavaScript : sur chaque cellule, `flex-basis` et `flex-grow` sont tous deux proportionnels au ratio de la photo, donc flexbox garde la largeur finale proportionnelle au ratio, et `aspect-ratio` en déduit une hauteur identique pour toutes les photos d'une même ligne. Le ratio arrive en variable CSS inline (`--ratio`) depuis les dimensions lues à l'upload. `--espace` et `--hauteur-base`, en haut de `.gallery`, sont les deux seuls réglages ; sur petit écran, seule `--hauteur-base` change. Un remplisseur `.gallery::after` au `flex-grow` énorme absorbe l'espace libre de la dernière ligne, qui garderait sinon une hauteur bien supérieure aux autres.
 
@@ -112,6 +125,8 @@ Conteneurisation et backend fonctionnels, vérifiés de bout en bout : upload d'
 
 Reste à faire :
 - **Frontend** — `UploadForm` (uploader depuis le site est une exigence de l'énoncé) et `Lightbox`.
+- **Performance du défilement** — deux réglages identifiés mais pas encore appliqués, faute d'avoir pu juger à l'écran : le `backdrop-filter: blur(8px)` de `.album-nav` est le premier suspect de saccades (sur un élément collé, le flou est recalculé à chaque image, et Lenis repositionne à chaque image), et `lerp` laissé à 0,1 donne une sensation de flottement qu'un passage à 0,15–0,2 atténuerait.
+- **Miniatures** — les images sont servies en pleine résolution, 4 à 7 fois plus grandes que leur taille d'affichage. Sans conséquence sur des images de test légères, mais ce sera la cause dominante de saccades avec de vraies photos : c'est l'argument pour avancer le worker `sharp`.
 - **Backend** — `PATCH /api/photos/order` (réordonnancement), prévu plus tard.
 - **`k8s/`** — dossier vide, c'est la partie évaluée. À décider avant de commencer : comment les images arrivent dans minikube (construire dans son démon via `eval $(minikube docker-env)` et `imagePullPolicy: Never`, ou passer par un registre).
 

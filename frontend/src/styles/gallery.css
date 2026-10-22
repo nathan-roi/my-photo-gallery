@@ -1,3 +1,95 @@
+/* Barre de navigation des albums, collée en haut. Sa hauteur est reportée dans
+   --hauteur-nav, qui sert à décaler les ancres : sans ce décalage, le titre de
+   la section visée finirait caché sous la barre.
+   À ajuster si la barre passe sur deux lignes (beaucoup d'albums). */
+:root {
+  --hauteur-nav: 3.5rem;
+}
+
+.album-nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin-bottom: 2rem;
+  padding: 0.75rem 0;
+  background: color-mix(in srgb, var(--fond) 92%, transparent);
+  border-bottom: 1px solid var(--fond-carte);
+}
+
+.album-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.album-nav a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  color: var(--texte);
+  text-decoration: none;
+  background: var(--fond-carte);
+}
+
+.album-nav a:hover,
+.album-nav a:focus-visible {
+  background: color-mix(in srgb, var(--fond-carte) 70%, var(--texte));
+  color: var(--fond);
+}
+
+.album-nav-compte {
+  font-size: 0.75rem;
+  color: var(--texte-discret);
+}
+
+.album-nav a:hover .album-nav-compte,
+.album-nav a:focus-visible .album-nav-compte {
+  color: inherit;
+}
+
+.album {
+  margin-bottom: 3rem;
+
+  /* Fondu à l'entrée dans la fenêtre : la section part transparente et laisse
+     donc voir le fond de page, d'où l'impression d'apparition depuis le blanc
+     en thème clair. La classe est posée par useRevelationAuScroll. */
+  opacity: 0;
+  transition: opacity 700ms ease-out;
+}
+
+.album--visible {
+  opacity: 1;
+}
+
+/* Filet de sécurité : le hook affiche déjà tout d'emblée dans ce cas, cette
+   règle supprime en plus la transition. */
+@media (prefers-reduced-motion: reduce) {
+  .album {
+    opacity: 1;
+    transition: none;
+  }
+}
+
+/* Arrête le défilement sous la barre collée, avec un peu d'air au-dessus du
+   titre de section. Lenis lit ce scroll-margin-top calculé dans son scrollTo,
+   donc le décalage des ancres se règle bien ici et nulle part ailleurs. */
+.album[id] {
+  scroll-margin-top: calc(var(--hauteur-nav) + 0.75rem);
+}
+
+.album-titre {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--texte-discret);
+}
+
 /* Grille justifiée : chaque ligne est remplie sur toute la largeur, toutes les
    photos d'une ligne ont la même hauteur, et la largeur de chacune est
    proportionnelle à son ratio. L'écart est donc le même partout.
