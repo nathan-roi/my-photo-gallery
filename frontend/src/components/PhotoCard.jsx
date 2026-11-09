@@ -7,7 +7,7 @@ import {
 } from "../hooks/useRevelationAuScroll.js";
 import ModaleConfirmation from "./ModaleConfirmation.jsx";
 
-export default function PhotoCard({ photo, onSupprimee }) {
+export default function PhotoCard({ photo, onSupprimee, onOuvrir }) {
   const [demande, setDemande] = useState(false);
   const [suppression, setSuppression] = useState(false);
   const [erreur, setErreur] = useState(null);
@@ -45,13 +45,23 @@ export default function PhotoCard({ photo, onSupprimee }) {
       // avant même que l'image soit chargée.
       style={{ "--ratio": photo.width / photo.height }}
     >
-      <img
-        src={urlFichier(photo)}
-        alt={photo.titre}
-        width={photo.width}
-        height={photo.height}
-        loading="lazy"
-      />
+      {/* Un vrai <button> et non un gestionnaire sur l'image : la visionneuse
+          devient ainsi accessible au clavier, et le bouton de suppression
+          reste une cible distincte. */}
+      <button
+        type="button"
+        className="photo-ouvrir"
+        onClick={onOuvrir}
+        aria-label={`Agrandir ${photo.titre}`}
+      >
+        <img
+          src={urlFichier(photo)}
+          alt={photo.titre}
+          width={photo.width}
+          height={photo.height}
+          loading="lazy"
+        />
+      </button>
 
       <button
         type="button"

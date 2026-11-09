@@ -3,6 +3,7 @@ import { useState } from "react";
 import "lenis/dist/lenis.css";
 
 import Gallery from "./components/Gallery.jsx";
+import Lightbox from "./components/Lightbox.jsx";
 import ModaleUpload from "./components/ModaleUpload.jsx";
 import { usePhotos } from "./hooks/usePhotos.js";
 import "./App.css";
@@ -23,8 +24,14 @@ const OPTIONS_LENIS = {
 };
 
 function App() {
-  const { sections, albums, chargement, erreur, rafraichir } = usePhotos();
+  const { sections, photos, albums, chargement, erreur, rafraichir } =
+    usePhotos();
   const [modaleOuverte, setModaleOuverte] = useState(false);
+
+  // La photo ouverte est retenue par son identifiant et non par son rang : un
+  // rafraîchissement de la liste décalerait les rangs sous la visionneuse.
+  const [photoOuverte, setPhotoOuverte] = useState(null);
+  const indexOuvert = photos.findIndex((p) => p._id === photoOuverte);
 
   // L'envoi lui-même est fait par le formulaire, qui porte les fichiers et
   // l'avancement. Ici on ne décide que de la suite.
@@ -64,8 +71,17 @@ function App() {
           chargement={chargement}
           erreur={erreur}
           onChangement={rafraichir}
+          onOuvrir={(photo) => setPhotoOuverte(photo._id)}
         />
       </main>
+
+      {indexOuvert >= 0 && (
+        <Lightbox
+          photos={photos}
+          indexInitial={indexOuvert}
+          onFermer={() => setPhotoOuverte(null)}
+        />
+      )}
 
       <ModaleUpload
         ouverte={modaleOuverte}

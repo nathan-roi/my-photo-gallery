@@ -93,5 +93,9 @@ export function usePhotos() {
     .filter((section) => section.nom !== SANS_ALBUM)
     .map((section) => section.nom);
 
-  return { sections, albums, chargement, erreur, rafraichir };
+  // Liste à plat dans l'ordre d'affichage : c'est l'ordre dans lequel la
+  // visionneuse fait défiler les photos, albums compris.
+  const photos = sections.flatMap((section) => section.photos);
+
+  return { sections, photos, albums, chargement, erreur, rafraichir };
 }

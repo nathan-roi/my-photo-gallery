@@ -65,8 +65,8 @@ Le champ de regroupement s'appelle `album` et non `collection` : Mongoose réser
 Scripts : `npm run dev` (port 5173), `npm run build` (sort dans `dist/`), `npm run preview`, `npm run lint` (oxlint).
 `vite.config.js` : proxy `/api` vers `http://localhost:3001` en dev. `nginx.conf` : fallback vers `index.html` (indispensable pour le routage SPA) et cache long sur `/assets/`. Drag & drop futur : dnd-kit.
 Dépendance : lenis (défilement lissé).
-Composants écrits : Gallery (présentationnel), AlbumNav, AlbumSection, PhotoCard, UploadForm, ChampAlbum, ModaleUpload et ModaleConfirmation. Reste Lightbox.
-Hooks : `usePhotos` (récupération, regroupement en sections, liste des albums, `rafraichir`) appelé par `App` ; `useRevelationAuScroll` (fondu à l'entrée) ; `useDialogue` (ouverture d'un `<dialog>` et mise en pause de Lenis, partagé par les deux modales).
+Composants écrits : Gallery (présentationnel), AlbumNav, AlbumSection, PhotoCard, UploadForm, ChampAlbum, ModaleUpload, ModaleConfirmation et Lightbox.
+Hooks : `usePhotos` (récupération, regroupement en sections, liste à plat, liste des albums, `rafraichir`) appelé par `App` ; `useRevelationAuScroll` (fondu à l'entrée) ; `useDialogue` (ouverture d'un `<dialog>` et mise en pause de Lenis, partagé par les deux modales).
 
 La galerie est découpée en **une section par album**, avec une barre de navigation collée en haut. Les photos sans album vont dans une section « Autres », placée en dernier ; les autres albums sont triés par nom avec un `Intl.Collator("fr")`. Chaque section a son ancre (`#album-<nom-sans-accent>`) et sa propre grille justifiée. Attention : un album nommé littéralement « Autres » fusionnerait avec la section des photos sans album.
 
@@ -89,6 +89,13 @@ La galerie est découpée en **une section par album**, avec une barre de naviga
 - « Annuler » est **avant** « Supprimer » dans le DOM : le `<dialog>` donne le focus au premier élément focalisable, une frappe d'Entrée réflexe ne doit pas effacer une photo ;
 - pendant la requête, `onCancel` fait un `preventDefault` pour qu'Échap ne ferme pas la fenêtre : l'action est déjà partie, et l'éventuelle erreur doit pouvoir s'afficher là où elle a été demandée ;
 - en cas d'échec la fenêtre reste ouverte avec le message de l'API et la photo reste en place ; en cas de succès `rafraichir` redescend depuis `App`, donc la section disparaît d'elle-même si c'était sa dernière photo.
+
+**Visionneuse plein écran** : un clic sur une photo ouvre `Lightbox`, troisième `<dialog>` de l'application (même `useDialogue`, même portail vers `document.body`).
+- elle fait défiler **toute la galerie dans l'ordre d'affichage**, albums compris, et non le seul album cliqué : `usePhotos` expose pour cela une liste à plat à côté des sections. Le défilement boucle, il n'y a donc pas de bout de liste ;
+- `App` retient la photo ouverte **par son identifiant** et recalcule le rang : un rafraîchissement de la liste (upload, suppression) décalerait un rang mémorisé ;
+- dans la vignette, l'image est enveloppée dans un `<button>` et non munie d'un `onClick` : la visionneuse devient accessible au clavier et le bouton de suppression reste une cible distincte ;
+- flèches ← et → en plus des deux boutons, Échap par le `<dialog>`, et un clic hors de l'image ou d'un bouton ferme (`target.closest("img, button")`) ;
+- les voisines immédiates sont préchargées (`new Image()`) : les photos étant servies en pleine résolution, chaque flèche laisserait sinon un blanc. C'est un palliatif, pas une réponse au problème des miniatures.
 
 **L'envoi est séquentiel, et ce n'est pas optionnel** : l'API calcule `position` avec un `max + 1`, donc des envois parallèles lisent le même maximum. Vérifié — trois requêtes simultanées donnent les positions [8, 9, 9]. Ne pas « optimiser » en `Promise.all` sans corriger d'abord l'API (compteur atomique ou position calculée à l'insertion). Chaque photo envoyée est retirée du formulaire au fur et à mesure, donc un échec en cours de route ne laisse que les fichiers restants, réessayables sans doublon ; la fenêtre ne se ferme que si tout est passé. `envoyerPhoto` retombe sur le code de statut quand le corps n'est pas du JSON : un 413 vient du proxy nginx et renvoie du HTML.
 
@@ -140,7 +147,7 @@ Piège : MongoDB ne crée son utilisateur root qu'au premier démarrage, quand l
 Conteneurisation et backend fonctionnels, vérifiés de bout en bout : upload d'une image, lecture des dimensions, stockage dans MinIO, liste triée par position, filtre par album, proxy du fichier (octet pour octet identique à l'original), suppression du document et de l'objet.
 
 Reste à faire :
-- **Frontend** — `Lightbox`. Le formulaire d'upload et la suppression sont faits. Pas de champ titre : l'API retient le nom du fichier, ce qui suffit pour un envoi groupé.
+- **Frontend** — rien de bloquant : formulaire d'upload, suppression et visionneuse sont faits. Pas de champ titre : l'API retient le nom du fichier, ce qui suffit pour un envoi groupé.
 - **Performance du défilement** — deux réglages identifiés mais pas encore appliqués, faute d'avoir pu juger à l'écran : le `backdrop-filter: blur(8px)` de `.album-nav` est le premier suspect de saccades (sur un élément collé, le flou est recalculé à chaque image, et Lenis repositionne à chaque image), et `lerp` laissé à 0,1 donne une sensation de flottement qu'un passage à 0,15–0,2 atténuerait.
 - **Miniatures** — les images sont servies en pleine résolution, 4 à 7 fois plus grandes que leur taille d'affichage. Sans conséquence sur des images de test légères, mais ce sera la cause dominante de saccades avec de vraies photos : c'est l'argument pour avancer le worker `sharp`.
 - **Backend** — `PATCH /api/photos/order` (réordonnancement), prévu plus tard.
