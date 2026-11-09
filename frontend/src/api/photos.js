@@ -39,3 +39,13 @@ export async function envoyerPhoto({ fichier, album, titre }) {
 
   return reponse.json();
 }
+
+export async function supprimerPhoto(id) {
+  const reponse = await fetch(`${BASE}/${id}`, { method: "DELETE" });
+
+  // L'API renvoie 204 sans corps : il n'y a rien à analyser en cas de succès.
+  if (!reponse.ok) {
+    const details = await reponse.json().catch(() => null);
+    throw new Error(details?.error ?? `Suppression refusée (HTTP ${reponse.status})`);
+  }
+}

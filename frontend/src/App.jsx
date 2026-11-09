@@ -59,7 +59,12 @@ function App() {
           </button>
         </header>
 
-        <Gallery sections={sections} chargement={chargement} erreur={erreur} />
+        <Gallery
+          sections={sections}
+          chargement={chargement}
+          erreur={erreur}
+          onChangement={rafraichir}
+        />
       </main>
 
       <ModaleUpload

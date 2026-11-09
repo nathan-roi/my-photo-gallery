@@ -55,22 +55,26 @@
 
 .album {
   margin-bottom: 3rem;
+}
 
-  /* Fondu à l'entrée dans la fenêtre : la section part transparente et laisse
-     donc voir le fond de page, d'où l'impression d'apparition depuis le blanc
-     en thème clair. La classe est posée par useRevelationAuScroll. */
+/* Fondu à l'entrée dans la fenêtre. L'élément part transparent et laisse donc
+   voir le fond de page, d'où l'impression d'apparition depuis le blanc en thème
+   clair. Les classes sont posées par useRevelationAuScroll, élément par élément
+   et non par section : dans un album plus haut que la fenêtre, tout ce qui
+   suit le premier écran apparaîtrait sinon sans animation. */
+.fondu {
   opacity: 0;
   transition: opacity 700ms ease-out;
 }
 
-.album--visible {
+.fondu--visible {
   opacity: 1;
 }
 
 /* Filet de sécurité : le hook affiche déjà tout d'emblée dans ce cas, cette
    règle supprime en plus la transition. */
 @media (prefers-reduced-motion: reduce) {
-  .album {
+  .fondu {
     opacity: 1;
     transition: none;
   }
@@ -140,22 +144,39 @@
   object-fit: cover;
 }
 
-/* Le titre n'apparaît qu'au survol, pour ne pas charger la grille. */
-.photo-card figcaption {
+/* Bouton de suppression, révélé au survol. `:focus-within` le garde visible
+   pour la navigation au clavier, sans quoi il serait inatteignable autrement
+   qu'à la souris. */
+.photo-supprimer {
   position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  padding: 0.75rem;
-  font-size: 0.85rem;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--rayon);
+  /* L'icône hérite des deux : `currentColor` la peint en blanc et le `font-size`
+     lui donne sa taille, l'une comme l'autre en `em` (voir .icone-corbeille). */
+  font-size: 0.95rem;
   color: #fff;
-  background: linear-gradient(transparent, rgb(0 0 0 / 70%));
+  background: rgb(0 0 0 / 55%);
+  cursor: pointer;
   opacity: 0;
-  transition: opacity 150ms ease;
+  transition: opacity 150ms ease, background 150ms ease;
 }
 
-.photo-card:hover figcaption,
-.photo-card:focus-within figcaption {
+.photo-card:hover .photo-supprimer,
+.photo-card:focus-within .photo-supprimer {
   opacity: 1;
+}
+
+.photo-supprimer:hover,
+.photo-supprimer:focus-visible {
+  background: var(--texte-erreur);
 }
 
 .gallery-message {

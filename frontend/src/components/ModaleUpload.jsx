@@ -1,6 +1,4 @@
-import { useLenis } from "lenis/react";
-import { useEffect, useRef } from "react";
-
+import useDialogue from "../hooks/useDialogue.js";
 import UploadForm from "./UploadForm.jsx";
 import "../styles/modale.css";
 
@@ -9,34 +7,7 @@ import "../styles/modale.css";
  * piège de focus, la fermeture par Échap et l'inertie de l'arrière-plan.
  */
 export default function ModaleUpload({ ouverte, onFermer, albums, onTermine }) {
-  const dialogue = useRef(null);
-  const lenis = useLenis();
-
-  useEffect(() => {
-    const element = dialogue.current;
-    if (!element) return;
-
-    if (ouverte && !element.open) {
-      element.showModal();
-    } else if (!ouverte && element.open) {
-      element.close();
-    }
-  }, [ouverte]);
-
-  // Lenis détourne la molette sur toute la page : sans l'arrêter, l'arrière-plan
-  // défilerait derrière la fenêtre. Le `data-lenis-prevent` plus bas ne protège
-  // que le contenu de la modale, pas le reste de la page.
-  useEffect(() => {
-    if (!lenis) return;
-
-    if (ouverte) {
-      lenis.stop();
-    } else {
-      lenis.start();
-    }
-
-    return () => lenis.start();
-  }, [lenis, ouverte]);
+  const dialogue = useDialogue(ouverte);
 
   return (
     <dialog
@@ -61,7 +32,7 @@ export default function ModaleUpload({ ouverte, onFermer, albums, onTermine }) {
             onClick={onFermer}
             aria-label="Fermer"
           >
-            <span aria-hidden="true">×</span>
+            <span className="icone-croix" aria-hidden="true" />
           </button>
         </div>
 

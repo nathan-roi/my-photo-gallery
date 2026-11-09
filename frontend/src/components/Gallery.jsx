@@ -2,7 +2,7 @@ import AlbumNav from "./AlbumNav.jsx";
 import AlbumSection from "./AlbumSection.jsx";
 import "../styles/gallery.css";
 
-export default function Gallery({ sections, chargement, erreur }) {
+export default function Gallery({ sections, chargement, erreur, onChangement }) {
   if (chargement) {
     return <p className="gallery-message">Chargement…</p>;
   }
@@ -21,7 +21,11 @@ export default function Gallery({ sections, chargement, erreur }) {
       {sections.length > 1 && <AlbumNav sections={sections} />}
 
       {sections.map((section) => (
-        <AlbumSection key={section.ancre} section={section} />
+        <AlbumSection
+          key={section.ancre}
+          section={section}
+          onChangement={onChangement}
+        />
       ))}
     </>
   );

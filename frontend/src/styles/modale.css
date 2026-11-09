@@ -6,7 +6,7 @@
   max-height: min(85vh, 50rem);
   padding: 0;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--rayon);
   color: var(--texte);
   background: var(--fond);
   box-shadow: 0 24px 64px rgb(0 0 0 / 28%);
@@ -50,13 +50,16 @@
 
 .modale-fermer {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 2rem;
   height: 2rem;
   padding: 0;
   border: none;
-  border-radius: 50%;
-  font-size: 1.35rem;
-  line-height: 1;
+  border-radius: var(--rayon);
+  /* Règle la taille de l'icône, qui est dimensionnée en `em`. */
+  font-size: 0.8rem;
   color: var(--texte-discret);
   background: none;
   cursor: pointer;
@@ -72,4 +75,93 @@
    intérieure de la fenêtre s'en charge. */
 .modale .upload {
   margin-bottom: 0;
+}
+
+/* Confirmation d'une action irréversible : fenêtre étroite, sans en-tête collé,
+   le contenu étant toujours plus court que la hauteur disponible. */
+.modale--confirmation {
+  width: min(26rem, calc(100vw - 2rem));
+}
+
+.confirmation-titre {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* L'aperçu porte les dimensions réelles de la photo en attributs (utiles pour
+   réserver le format) : il faut donc les neutraliser ici. */
+.confirmation-apercu {
+  align-self: center;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 11rem;
+  background: var(--fond-carte);
+}
+
+.confirmation-message {
+  margin: 1rem 0 0;
+  font-size: 0.9rem;
+  color: var(--texte-discret);
+}
+
+.confirmation-erreur {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--texte-erreur);
+}
+
+.confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.confirmation-actions button {
+  padding: 0.5rem 1rem;
+  border-radius: var(--rayon);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirmation-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.confirmation-annuler {
+  border: 1px solid var(--fond-carte);
+  color: var(--texte);
+  background: var(--fond-carte);
+}
+
+.confirmation-annuler:hover:not(:disabled),
+.confirmation-annuler:focus-visible {
+  border-color: var(--texte-discret);
+}
+
+/* Texte sur le fond de page plutôt que du blanc : en thème sombre, le rouge
+   d'erreur est clair et du blanc dessus ne se lirait plus. L'icône suit, elle
+   est peinte avec `currentColor`. */
+.confirmation-supprimer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--texte-erreur);
+  color: var(--fond);
+  background: var(--texte-erreur);
+}
+
+.confirmation-supprimer .icone-corbeille {
+  /* Un peu en dessous de la hauteur des capitales : à 1em, le dessin de la
+     corbeille dépasse visuellement le libellé. */
+  font-size: 0.9em;
+}
+
+.confirmation-supprimer:hover:not(:disabled),
+.confirmation-supprimer:focus-visible {
+  filter: brightness(1.1);
 }

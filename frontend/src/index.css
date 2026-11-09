@@ -4,6 +4,9 @@
   --texte: #1f1d1b;
   --texte-discret: #6b6762;
   --texte-erreur: #a32b2b;
+  /* Rayon commun aux contrôles (boutons, champs) et aux fenêtres (modales,
+     liste déroulante). */
+  --rayon: 3px;
 
   color-scheme: light dark;
 }
@@ -40,4 +43,31 @@ body {
 
 img {
   max-width: 100%;
+}
+
+/* Icônes monochromes posées en masque et non en image : c'est `background` qui
+   les colore, donc `currentColor` suffit à les faire suivre le texte du bouton
+   qui les porte. Dimensionnées en `em` pour la même raison : le `font-size` du
+   bouton règle la taille de son icône. Vite réécrit les URL et empreinte les
+   fichiers à la construction, une seule fois pour tous leurs usages. */
+.icone-corbeille,
+.icone-croix {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+  background: currentColor;
+}
+
+.icone-corbeille {
+  mask: url("./assets/trash-icon.png") center / contain no-repeat;
+  -webkit-mask: url("./assets/trash-icon.png") center / contain no-repeat;
+}
+
+/* Le dessin touche les bords de son image, là où la corbeille garde une marge :
+   à `font-size` égal, cette croix paraîtrait bien plus grosse. Les boutons qui
+   la portent sont réglés en conséquence. */
+.icone-croix {
+  mask: url("./assets/close-icon.png") center / contain no-repeat;
+  -webkit-mask: url("./assets/close-icon.png") center / contain no-repeat;
 }

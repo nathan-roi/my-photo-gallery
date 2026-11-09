@@ -251,7 +251,7 @@ export default function UploadForm({ albums, onTermine }) {
                   disabled={envoiEnCours}
                   aria-label={`Retirer ${entree.fichier.name}`}
                 >
-                  ×
+                  <span className="icone-croix" aria-hidden="true" />
                 </button>
                 <span className="apercu-nom">{entree.fichier.name}</span>
                 <span className="apercu-taille">{formaterTaille(entree.fichier.size)}</span>
