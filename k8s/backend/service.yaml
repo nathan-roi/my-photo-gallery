@@ -1,0 +1,15 @@
+# Service ClusterIP : il répartit les requêtes entre les deux pods de l'API.
+# C'est lui que l'Ingress désigne pour /api.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 3001
+      targetPort: http

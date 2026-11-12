@@ -1,0 +1,91 @@
+# Même raisonnement que pour MongoDB : les fichiers des photos doivent survivre
+# à la destruction du pod, donc StatefulSet + volumeClaimTemplates.
+#
+# C'est ici que se joue la possibilité d'avoir plusieurs replicas d'API : les
+# images sont dans MinIO, joint par le réseau, et non dans un volume monté sur
+# l'API — un PVC ReadWriteOnce ne peut pas être partagé entre plusieurs nœuds.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          # Image chargée à la main dans minikube, comme celles du projet, et
+          # non téléchargée depuis un registre : MinIO ne distribue plus son
+          # image communautaire en accès anonyme. Docker Hub et quay.io
+          # répondent tous deux « insufficient_scope: authorization failed »,
+          # sur le tag comme sur le digest (vérifié le 2026-11-12).
+          #
+          # L'image vient donc du cache Docker local, d'un `docker pull`
+          # antérieur à cette restriction, et doit être chargée avant le
+          # déploiement :
+          #   docker tag minio/minio:latest minio/minio:RELEASE.2025-09-07T16-13-09Z
+          #   minikube image load minio/minio:RELEASE.2025-09-07T16-13-09Z
+          #
+          # Le tag reprend la version réelle (label `release` de l'image) plutôt
+          # que `latest`, pour que le manifeste dise ce qui tourne.
+          image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+          imagePullPolicy: Never
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          env:
+            # MinIO, lui, relit ses identifiants à chaque démarrage : les
+            # changer dans le Secret suffit, après un redémarrage du pod.
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: MINIO_SECRET_KEY
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          # MinIO distingue les deux notions, on les utilise telles quelles :
+          # /live répond dès que le processus tourne, /ready quand le stockage
+          # est réellement accessible.
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

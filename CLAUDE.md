@@ -156,7 +156,7 @@ my-photo-gallery/
 ## Ordre de travail
 1. ~~Backend et frontend en local (`npm run dev`), avec seulement MongoDB et MinIO dans Docker.~~ (plomberie en place, code applicatif à écrire)
 2. ~~Dockerfiles + `docker-compose.yml`.~~ Fait.
-3. Manifestes `k8s/` en dernier (traduction du compose), test sur minikube.
+3. ~~Manifestes `k8s/` en dernier (traduction du compose), test sur minikube.~~ Fait, déployé et vérifié sur minikube.
 
 ## Variables d'environnement
 Deux fichiers, non versionnés, dont seuls les `.example` sont commités :
@@ -179,7 +179,91 @@ Reste à faire :
 - **Performance du défilement** — deux réglages identifiés mais pas encore appliqués, faute d'avoir pu juger à l'écran : le `backdrop-filter: blur(8px)` de `.album-nav` est le premier suspect de saccades (sur un élément collé, le flou est recalculé à chaque image, et Lenis repositionne à chaque image), et `lerp` laissé à 0,1 donne une sensation de flottement qu'un passage à 0,15–0,2 atténuerait.
 - **Miniatures** — les images sont servies en pleine résolution, 4 à 7 fois plus grandes que leur taille d'affichage. Sans conséquence sur des images de test légères, mais ce sera la cause dominante de saccades avec de vraies photos : c'est l'argument pour avancer le worker `sharp`.
 - **Backend** — `PATCH /api/photos/order` (réordonnancement), prévu plus tard.
-- **`k8s/`** — dossier vide, c'est la partie évaluée. À décider avant de commencer : comment les images arrivent dans minikube (construire dans son démon via `eval $(minikube docker-env)` et `imagePullPolicy: Never`, ou passer par un registre).
+- **`k8s/`** — écrit et déployé. Reste à documenter le déploiement dans le `README.md` (c'est une exigence du TP).
+
+## Kubernetes
+
+12 objets dans `galerie-photo`, assemblés par Kustomize (`kubectl apply -k k8s/`). Déployé et vérifié sur minikube v1.39 / Kubernetes v1.37.
+
+### Comment les images arrivent dans minikube
+Question tranchée : **construction sur le démon Docker de l'hôte, puis `minikube image load`**, avec `imagePullPolicy: Never` dans les deux Deployments.
+
+La voie « construire directement dans le démon de minikube » (`eval $(minikube docker-env)`) est inutilisable : minikube v1.39 tourne avec le **runtime containerd**, et sa couche de compatibilité avec l'API Docker ne sait pas démarrer BuildKit — `docker compose build` échoue sur `failed to inspect pulled image moby/buildkit:buildx-stable-1: 404 page not found`. Ne pas y revenir sans repasser le cluster en `--container-runtime=docker`, ce qui l'obligerait à utiliser `cri-dockerd`, un adaptateur que les vrais clusters n'emploient plus.
+
+Le chargement coûte 11 s pour l'API (216 Mo) et 5 s pour le front (69 Mo). Après chaque reconstruction il faut recharger **puis** relancer les pods (`kubectl rollout restart deployment/backend`) : le tag ne changeant pas, Kubernetes ne voit aucune raison de recréer quoi que ce soit.
+
+```
+docker compose build
+docker tag my-photo-gallery-backend:latest  galerie-backend:1.0
+docker tag my-photo-gallery-frontend:latest galerie-frontend:1.0
+minikube image load galerie-backend:1.0
+minikube image load galerie-frontend:1.0
+```
+
+### L'image de MinIO doit être chargée elle aussi
+**MinIO ne distribue plus son image communautaire en accès anonyme.** Docker Hub *et* quay.io répondent `insufficient_scope: authorization failed`, sur le tag comme sur le digest (vérifié le 2026-11-12, y compris `minio/minio:latest`). L'image présente en local vient d'un `docker pull` antérieur à cette restriction, et c'est elle qu'on charge :
+
+```
+docker tag minio/minio:latest minio/minio:RELEASE.2025-09-07T16-13-09Z
+minikube image load minio/minio:RELEASE.2025-09-07T16-13-09Z
+```
+
+D'où le `imagePullPolicy: Never` sur MinIO, qui n'était pas prévu. `mongo:8` et `busybox:1.37`, eux, se téléchargent normalement. Si le déploiement doit tourner sur une machine neuve, c'est le point qui cassera en premier.
+
+### Ordre de démarrage : initContainer, pas CrashLoopBackOff
+L'API sort en erreur si MongoDB ou MinIO sont injoignables au démarrage (choix volontaire, cf. `index.js`). Un `initContainer` busybox attend donc l'ouverture du port 27017 puis `/minio/health/live` avant de lancer le conteneur de l'API.
+
+busybox et non l'image `mongo` : 4 Mo au lieu de 800 Mo, et un simple test d'ouverture de port suffit puisque MongoDB n'écoute sur 27017 qu'**après** avoir créé son utilisateur root.
+
+Vérifié dans les pires conditions : pendant les 6 minutes où MinIO était en `ImagePullBackOff`, les deux pods de l'API sont restés en `Init:0/1` avec **0 redémarrage**, puis ont démarré en 6 s. Sans l'initContainer, c'eût été six minutes de `CrashLoopBackOff` — ce qui converge, mais ressemble à une panne.
+
+### `MONGO_URL` est composée dans le Deployment
+Le Secret ne contient que `MONGO_USER` et `MONGO_PASSWORD` ; l'URL est assemblée dans le manifeste, pour que le mot de passe n'existe qu'à un seul endroit.
+
+**Piège : l'expansion `$(VAR)` ne voit que les variables déclarées plus haut dans le même bloc `env`, jamais celles venues d'un `envFrom`.** D'où les trois redéclarations apparemment redondantes de `MONGO_USER`, `MONGO_PASSWORD` et `MONGO_DB` dans `k8s/backend/deployment.yaml`. Attention aussi : un mot de passe contenant `@ : / ? #` devrait être encodé en pourcent.
+
+### Ce que l'Ingress doit reprendre du proxy nginx
+Les trois annotations de `k8s/ingress.yaml` traduisent la configuration du service `proxy` du compose. La première n'est pas optionnelle :
+- `proxy-body-size: 25m` — ingress-nginx limite les corps à **1 Mo** par défaut, l'upload d'une photo serait refusé en 413. Vérifié : un corps de 2 Mo passe (401 de l'API, pas 413 de l'Ingress), un corps de 30 Mo est bien refusé en 413.
+- `proxy-buffering: "off"` et `proxy-read-timeout: "300"` — pour `GET /api/photos/:id/file`, qui renvoie l'image en entier.
+
+Et **pas de `rewrite-target`** : l'API attend `/api/photos`, préfixe compris. ingress-nginx choisit la règle au préfixe le plus long, donc `/api` l'emporte sur `/` sans qu'il y ait d'ordre à respecter dans le fichier.
+
+### `preStop` : le rolling update n'est pas sans coupure sans lui
+Le retrait d'un pod de la liste des Endpoints et l'envoi du SIGTERM partent **en parallèle** : ingress-nginx peut router une requête vers un pod qui vient de fermer son écoute. Mesuré — **1 échec (connexion refusée) sur 521 requêtes** pendant un rolling update, malgré `maxUnavailable: 0` et l'arrêt propre du serveur.
+
+Un `lifecycle.preStop.sleep` de 5 s sur les deux Deployments décale le SIGTERM le temps que le retrait se propage. Après correction : **1916 requêtes sur deux rolling updates complets, 0 échec.** Ce délai est compté dans `terminationGracePeriodSeconds`, qui doit donc rester plus grand (30 s ici).
+
+`lifecycle.preStop.sleep` plutôt qu'un `exec: ["sleep", "5"]` : pas de dépendance à la présence d'un shell dans l'image.
+
+### `drop: ["ALL"]` casse l'image nginx officielle
+Le front bouclait en `CrashLoopBackOff` sur :
+
+```
+[emerg] chown("/var/cache/nginx/client_temp", 101) failed (1: Operation not permitted)
+```
+
+Le processus maître de nginx tourne bien en root, mais root **sans `CAP_CHOWN`** ne peut pas changer le propriétaire de ses répertoires de cache, et sans `CAP_NET_BIND_SERVICE` il ne peut pas écouter sur un port inférieur à 1024. D'où la liste blanche explicite dans `k8s/frontend/deployment.yaml` : `drop: ["ALL"]` puis `add: ["CHOWN", "SETGID", "SETUID", "NET_BIND_SERVICE"]`.
+
+L'API, elle, supporte `drop: ["ALL"]` **et** `readOnlyRootFilesystem: true` — uniquement parce que multer est en `memoryStorage` et qu'elle n'écrit jamais sur disque.
+
+### Détails qui ont leur raison
+- **Le Secret réel n'est pas versionné**, mais `kustomization.yaml` référence bien `secret.yaml`. Conséquence voulue : sans `cp k8s/secrets.example.yaml k8s/secret.yaml`, `kubectl apply -k k8s/` échoue d'emblée — préférable à un déploiement avec des identifiants d'exemple.
+- **Service headless pour MongoDB** (`clusterIP: None`), ClusterIP ordinaire pour MinIO : le StatefulSet de Mongo suit le motif standard, MinIO n'a qu'une instance et personne n'a besoin de joindre un pod nommément. Il faudrait le passer en headless pour un MinIO distribué.
+- **MinIO épinglé à sa version réelle** (`RELEASE.2025-09-07T16-13-09Z`, le label `release` de l'image) et non `latest` : avec le tag `latest`, Kubernetes repasse en `imagePullPolicy: Always`.
+- **`labels:` avec `includeSelectors: false`** dans `kustomization.yaml` : un label ajouté aux selectors des Deployments les rendrait impossibles à modifier ensuite, les selectors étant immuables.
+- **Les PVC survivent à `kubectl delete -k k8s/`** : le `volumeClaimTemplates` d'un StatefulSet ne supprime pas ses PVC. Vérifié — un document témoin écrit dans Mongo, le pod `mongodb-0` supprimé, le document toujours là après recréation. Pour repartir de zéro : `kubectl delete pvc -n galerie-photo --all`.
+- **Trois sondes sur l'API**, et c'est pour elles que `/api/health` et `/api/ready` sont distincts : `startupProbe` sur `health` (60 s de marge), `livenessProbe` sur `health` (ne teste pas Mongo, sinon un hoquet de la base redémarrerait tous les pods), `readinessProbe` sur `ready` (retire le pod du Service sans le tuer).
+- **La console MinIO (9001) est dans le Service mais pas dans l'Ingress** : `kubectl port-forward svc/minio 9001:9001` pour le diagnostic.
+- Le VPN Cisco (`cscotun0`) supprime les routes des ponts Docker, **y compris celle de minikube** (192.168.49.0/24) : `kubectl` expire alors sans message utile. À couper avant de travailler sur le cluster.
+
+### Accès depuis le navigateur
+```
+echo "$(minikube ip) galerie.local" | sudo tee -a /etc/hosts
+```
+Puis `http://galerie.local`. Filet de secours si l'Ingress fait des siennes : `kubectl -n galerie-photo port-forward svc/frontend 8080:80`.
+
+`COOKIE_SECURE` reste à `false` : l'Ingress de minikube sert en HTTP, et un cookie `secure` y serait tout simplement ignoré par le navigateur — la session ne tiendrait jamais.
 
 ### Pièges rencontrés, à ne pas réintroduire
 - Le Dockerfile du backend utilise `CMD ["node", "src/index.js"]` et non `npm start` : avec npm, c'est npm qui est PID 1 et qui reçoit le SIGTERM, et l'arrêt propre ne se déclenche pas.

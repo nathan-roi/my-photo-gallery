@@ -1,0 +1,76 @@
+# Le conteneur du front ne contient que les fichiers statiques produits par
+# Vite, servis par nginx : aucun état, aucune variable d'environnement, aucun
+# runtime Node. Il n'y a donc rien à configurer ici — les appels à l'API sont
+# relatifs (`fetch("/api/photos")`) et c'est l'Ingress qui les route.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: nginx
+          image: galerie-frontend:1.0
+          # Comme pour l'API : image chargée à la main dans minikube.
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 80
+          # Même raison que pour l'API : laisser le temps au retrait de
+          # l'adresse du pod de se propager jusqu'à ingress-nginx, sinon une
+          # requête peut arriver sur un nginx qui vient de fermer son écoute.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          # Servir index.html est la seule chose que ce pod sache faire : la
+          # même sonde fait donc office de liveness et de readiness. Pas de
+          # startupProbe, nginx démarre en quelques dizaines de millisecondes.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              # On retire tout, puis on rend les quatre capacités dont l'image
+              # nginx officielle a réellement besoin. Avec un simple
+              # drop: ["ALL"] le conteneur boucle au démarrage sur
+              #   chown("/var/cache/nginx/client_temp", 101) : Operation not permitted
+              # — le processus maître tourne bien en root, mais root sans
+              # CAP_CHOWN ne peut pas changer le propriétaire de ses répertoires
+              # de cache, et sans CAP_NET_BIND_SERVICE il ne peut pas écouter
+              # sur le port 80 (tout port inférieur à 1024).
+              drop: ["ALL"]
+              add: ["CHOWN", "SETGID", "SETUID", "NET_BIND_SERVICE"]
+            # Pas de readOnlyRootFilesystem ici, contrairement à l'API : nginx
+            # écrit son pid et ses caches temporaires sous /var/run et
+            # /var/cache/nginx. Le rendre possible demanderait de monter des
+            # emptyDir sur ces chemins, pour un gain faible sur un conteneur
+            # qui ne sert que des fichiers en lecture.

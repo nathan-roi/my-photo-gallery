@@ -1,0 +1,185 @@
+# Deployment et non StatefulSet : l'API est sans état. Les fichiers sont dans
+# MinIO, les métadonnées dans MongoDB, les sessions dans MongoDB aussi — un pod
+# n'a rien à conserver, donc il est interchangeable et réplicable.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  # Deux replicas : c'est l'exigence du TP, et c'est ce qui justifie plusieurs
+  # choix de conception de l'application (sessions en base, bucket créé de
+  # façon idempotente, aucun fichier sur le disque local).
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Aucun pod retiré avant que son remplaçant soit prêt : le service reste
+      # disponible pendant toute la mise à jour.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      # L'API sort en erreur si MongoDB ou MinIO sont injoignables au démarrage
+      # (c'est volontaire : mieux vaut un échec franc qu'une API qui accepte du
+      # trafic qu'elle ne sait pas servir). Sans cette attente, les pods
+      # partiraient donc en CrashLoopBackOff pendant la minute où les bases se
+      # lèvent. Kubernetes finirait par converger, mais sur un premier
+      # déploiement ça ressemble à une panne.
+      initContainers:
+        - name: attendre-dependances
+          # busybox et non l'image de mongo : 4 Mo au lieu de 800 Mo, et un
+          # test d'ouverture de port suffit — MongoDB n'écoute sur 27017
+          # qu'après avoir créé son utilisateur root.
+          image: busybox:1.37
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Attente de MongoDB..."
+              until nc -z mongodb 27017; do sleep 2; done
+              echo "Attente de MinIO..."
+              until wget -q -O /dev/null http://minio:9000/minio/health/live; do sleep 2; done
+              echo "Dependances pretes."
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: api
+          image: galerie-backend:1.0
+          # L'image est chargée à la main dans minikube (`minikube image load`),
+          # elle n'existe sur aucun registre : sans `Never`, Kubernetes tenterait
+          # de la télécharger depuis Docker Hub et échouerait en ErrImagePull.
+          # À retirer le jour où l'image vient d'un registre.
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 3001
+          # Toute la configuration non secrète d'un coup.
+          envFrom:
+            - configMapRef:
+                name: galerie-config
+          env:
+            # Ces trois variables sont redéclarées ici, alors qu'elles sont déjà
+            # dans le ConfigMap ou le Secret, parce que MONGO_URL les réutilise :
+            # l'expansion $(VAR) ne voit que les variables définies plus haut
+            # dans ce même bloc `env`, jamais celles venues d'un `envFrom`.
+            - name: MONGO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: MONGO_USER
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: MONGO_PASSWORD
+            - name: MONGO_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: galerie-config
+                  key: MONGO_DB
+            # Composée ici plutôt que rangée en entier dans le Secret : le mot
+            # de passe n'existe qu'à un seul endroit. Attention, un mot de passe
+            # contenant @ : / ? # devrait être encodé en pourcent.
+            - name: MONGO_URL
+              value: mongodb://$(MONGO_USER):$(MONGO_PASSWORD)@mongodb:27017/$(MONGO_DB)?authSource=admin
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: MINIO_SECRET_KEY
+            - name: ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: ADMIN_USER
+            - name: ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: ADMIN_PASSWORD_HASH
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: SESSION_SECRET
+          # Le retrait d'un pod de la liste des Endpoints et l'envoi du SIGTERM
+          # partent en parallèle : ingress-nginx peut donc router une requête
+          # vers un pod qui vient de fermer son écoute. Mesuré — 1 échec
+          # (connexion refusée) sur 521 requêtes pendant un rolling update.
+          #
+          # Ce délai décale le SIGTERM : le pod continue de servir pendant que
+          # son retrait se propage. Il est compté dans
+          # terminationGracePeriodSeconds, qui doit donc rester plus grand.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          # Les trois sondes ont chacune leur rôle, et c'est pour elles que
+          # l'API distingue /api/health de /api/ready.
+          #
+          # startup : laisse le temps au démarrage (jusqu'à 60 s) sans quoi la
+          # livenessProbe tuerait un pod lent avant qu'il ait fini de se lever.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          # liveness : le processus répond-il encore ? /api/health ne teste
+          # surtout pas MongoDB — sinon un hoquet de la base ferait redémarrer
+          # tous les pods de l'API, ce qui n'arrangerait rien.
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          # readiness : le pod peut-il servir ? /api/ready vérifie MongoDB et le
+          # bucket. Un échec le retire du Service sans le tuer, le temps que les
+          # dépendances reviennent.
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              # 512 Mi et pas moins : multer garde le fichier en mémoire (25 Mo
+              # au maximum) et sharp décompresse l'image pour lire ses dimensions.
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            # Possible parce que l'API n'écrit jamais sur disque : multer utilise
+            # memoryStorage et le fichier part directement dans MinIO.
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      securityContext:
+        # L'image déclare déjà USER node (uid 1000) ; `runAsNonRoot` fait de ce
+        # choix une garantie vérifiée par Kubernetes plutôt qu'une convention
+        # du Dockerfile.
+        runAsNonRoot: true
+        runAsUser: 1000
+      # L'arrêt propre du serveur prend environ une seconde (server.close() +
+      # closeIdleConnections()). 30 s est large, c'est la valeur par défaut.
+      terminationGracePeriodSeconds: 30

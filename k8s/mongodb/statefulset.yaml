@@ -1,0 +1,79 @@
+# StatefulSet et non Deployment : un Deployment ne sait pas donner à chaque pod
+# son propre volume. Le `volumeClaimTemplates` ci-dessous crée un PVC par pod,
+# conservé quand le pod est détruit et rattaché au pod qui le remplace — c'est
+# ce qui fait survivre les données à un redémarrage.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+spec:
+  # Le Service headless qui porte l'identité réseau des pods.
+  serviceName: mongodb
+  # Une seule instance : pas de jeu de réplicas MongoDB ici. La haute
+  # disponibilité de la base n'est pas l'objet du TP, et un replica set
+  # demanderait une initialisation supplémentaire.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:8
+          ports:
+            - name: mongo
+              containerPort: 27017
+          env:
+            # Ces identifiants ne sont lus qu'au premier démarrage, quand
+            # /data/db est vide : c'est à ce moment que l'utilisateur root est
+            # créé. Les modifier ensuite n'a aucun effet.
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: MONGO_USER
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: galerie-secrets
+                  key: MONGO_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          # `mongosh --eval` plutôt qu'une sonde HTTP : MongoDB ne parle pas HTTP.
+          # Pas de livenessProbe sur la même commande : un ping qui échoue sous la
+          # charge redémarrerait la base, ce qui est pire que de l'attendre.
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - db.adminCommand('ping')
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+  # Un PVC par pod, nommé data-mongodb-0. Noter qu'il n'est PAS supprimé avec
+  # le StatefulSet : `kubectl delete -k k8s/` laisse les données en place.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # Pas de storageClassName : on prend celle par défaut du cluster
+        # (`standard`, du hostpath-provisioner, sur minikube).
+        resources:
+          requests:
+            storage: 2Gi

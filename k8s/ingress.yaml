@@ -1,0 +1,43 @@
+# L'Ingress remplace le service `proxy` du docker-compose : il donne au
+# navigateur une seule origine, d'où l'absence de CORS et d'URL d'API à
+# configurer dans le front.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: galerie
+  annotations:
+    # Indispensable : ingress-nginx limite les corps de requête à 1 Mo par
+    # défaut, et l'upload d'une photo serait refusé en 413 au-delà. Même
+    # valeur que le `client_max_body_size` du proxy en compose, et que la
+    # limite de multer côté API.
+    nginx.ingress.kubernetes.io/proxy-body-size: 25m
+    # GET /api/photos/:id/file renvoie l'image en entier : on la transmet au
+    # fil de l'eau plutôt que de la mettre en tampon, et on laisse du temps.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+    # Nom à faire pointer vers l'IP de minikube dans /etc/hosts :
+    #   echo "$(minikube ip) galerie.local" | sudo tee -a /etc/hosts
+    - host: galerie.local
+      http:
+        paths:
+          # Pas d'annotation `rewrite-target` : l'API attend /api/photos,
+          # préfixe compris. Une réécriture vers / casserait toutes les routes.
+          # ingress-nginx choisit la règle au préfixe le plus long, donc /api
+          # l'emporte sur / sans qu'il y ait d'ordre à respecter.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 3001
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

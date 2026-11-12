@@ -1,0 +1,6 @@
+# Tout l'applicatif vit dans un namespace dédié : les noms de services y sont
+# isolés, et un `kubectl delete namespace galerie-photo` suffit à tout retirer.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: galerie-photo

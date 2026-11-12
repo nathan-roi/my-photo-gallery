@@ -1,0 +1,45 @@
+# Assemble tous les manifestes : `kubectl apply -k k8s/`
+#
+# Kustomize est intégré à kubectl, il n'y a rien à installer.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Évite de répéter `namespace: galerie-photo` dans chaque fichier, et garantit
+# qu'aucun objet ne part dans `default` par oubli.
+namespace: galerie-photo
+
+# Label posé sur tous les objets, pratique pour les retrouver d'un coup :
+#   kubectl get all -l app.kubernetes.io/part-of=galerie-photo -A
+# includeSelectors: false — un label ajouté aux selectors des Deployments les
+# rendrait impossibles à mettre à jour plus tard (les selectors sont immuables).
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: galerie-photo
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  # Non versionné : à créer avec `cp secrets.example.yaml secret.yaml`.
+  - secret.yaml
+  - configmap.yaml
+  - mongodb/service.yaml
+  - mongodb/statefulset.yaml
+  - minio/service.yaml
+  - minio/statefulset.yaml
+  - backend/service.yaml
+  - backend/deployment.yaml
+  - frontend/service.yaml
+  - frontend/deployment.yaml
+  - ingress.yaml
+
+# Pour passer à un registre plutôt qu'à des images chargées à la main dans
+# minikube, il suffit de décommenter ce bloc et de retirer les
+# `imagePullPolicy: Never` des deux Deployments :
+#
+# images:
+#   - name: galerie-backend
+#     newName: docker.io/<compte>/galerie-backend
+#     newTag: "1.0"
+#   - name: galerie-frontend
+#     newName: docker.io/<compte>/galerie-frontend
+#     newTag: "1.0"

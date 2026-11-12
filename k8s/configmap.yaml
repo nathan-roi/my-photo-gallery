@@ -1,0 +1,23 @@
+# Configuration non secrète de l'API. Tout ce qui est un identifiant ou une
+# empreinte est dans le Secret, pas ici.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: galerie-config
+data:
+  PORT: "3001"
+
+  # Nom de la base, réutilisé par le Deployment de l'API pour composer MONGO_URL.
+  MONGO_DB: photogallery
+
+  # Noms des Services Kubernetes : la résolution DNS interne du cluster fait le
+  # reste, exactement comme les noms de services en docker compose.
+  MINIO_ENDPOINT: minio
+  MINIO_PORT: "9000"
+  MINIO_USE_SSL: "false"
+  MINIO_BUCKET: photos
+
+  # L'Ingress de minikube sert en HTTP : un cookie `secure` y serait tout
+  # simplement ignoré par le navigateur, et la session ne tiendrait jamais.
+  # À passer à "true" le jour où il y a du TLS devant.
+  COOKIE_SECURE: "false"
