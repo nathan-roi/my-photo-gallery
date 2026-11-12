@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import multer from "multer";
 import sharp from "sharp";
 
+import { exigerAdmin } from "../auth/session.js";
 import { Photo } from "../models/Photo.js";
 import { bucket, minio } from "../storage/minio.js";
 
@@ -50,7 +51,9 @@ router.get("/photos", async (req, res) => {
   res.json(photos);
 });
 
-router.post("/photos", upload.single("file"), async (req, res) => {
+// Lecture publique, écriture réservée : `exigerAdmin` vient avant multer,
+// pour refuser l'envoi sans avoir lu le fichier.
+router.post("/photos", exigerAdmin, upload.single("file"), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: "Champ `file` manquant" });
     return;
@@ -113,7 +116,7 @@ router.get("/photos/:id/file", async (req, res) => {
   flux.pipe(res);
 });
 
-router.delete("/photos/:id", async (req, res) => {
+router.delete("/photos/:id", exigerAdmin, async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     res.status(404).json({ error: "Photo inconnue" });
     return;

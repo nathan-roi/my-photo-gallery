@@ -36,7 +36,7 @@ Le compose a aussi un service `mongo-express` (interface web pour MongoDB, sur l
 - **Une seule origine dans les trois environnements** (dev via le proxy Vite, compose via le service `proxy`, K8s via l'Ingress) : le front appelle toujours l'API en relatif (`fetch("/api/photos")`), il n'y a donc jamais d'URL de base à configurer ni de CORS à activer.
 - **Front en SPA, pas en SSR.** Le conteneur du front ne contient que des fichiers statiques servis par nginx : sans état, sans variable d'environnement, sans runtime Node. Un premier essai avec React Router en mode framework (SSR) a été abandonné : le SSR coûtait un conteneur Node et un double chemin de données (loader côté serveur + fetch navigateur) pour un bénéfice nul ici (SEO, premier affichage).
 - **Pas de React Router pour l'instant** : la galerie est une page unique. À ajouter en mode *data* le jour où il faudra des URL partageables par photo.
-- **Authentification (décidée, pas encore écrite)** : lecture publique, écriture (ajout et suppression) réservée au propriétaire du site. Session stockée en base (`connect-mongo`) et non en mémoire, l'API ayant plusieurs replicas : un pod ne doit pas ignorer la session ouverte sur un autre. Pas de champ `owner` sur les photos — il n'y a qu'un seul auteur, donc rien à migrer le jour où l'authentification arrive. Tant qu'elle n'existe pas, `POST` et `DELETE /api/photos` sont ouverts et le bouton de suppression est visible par tout visiteur : **ne pas exposer l'application publiquement dans cet état**.
+- **Authentification** : lecture publique, écriture (ajout et suppression) réservée à un compte administrateur unique. Pas de rôles, pas de collection d'utilisateurs, pas de champ `owner` sur les photos — il n'y a qu'un seul auteur. Session en cookie, stockée en base (`connect-mongo`) et non en mémoire : l'API a plusieurs replicas, un pod ne doit pas ignorer la session ouverte sur un autre. Pas de JWT : il faudrait le ranger côté navigateur (vol par XSS depuis `localStorage`) et il resterait valable jusqu'à expiration, donc irrévocable sans liste de révocation — c'est-à-dire sans refaire un stockage de sessions.
 - `/api/health` ne teste volontairement ni Mongo ni MinIO : c'est une sonde de *liveness*, elle doit répondre même si les dépendances sont indisponibles, sinon K8s tuerait le pod de l'API à chaque hoquet de la base. C'est `/api/ready` qui vérifie les dépendances.
 
 ## Backend
@@ -51,6 +51,11 @@ Routes :
 - `PATCH /api/photos/order` — (plus tard) nouvel ordre, pas encore écrit
 - `GET /api/health` — liveness : répond toujours, ne teste pas les dépendances
 - `GET /api/ready` — readiness : vérifie Mongo et le bucket MinIO, 503 sinon
+- `GET /api/session` — `{ authentifie }`, interrogée au chargement du front
+- `POST /api/session` — connexion, pose le cookie
+- `DELETE /api/session` — déconnexion
+
+`POST /api/photos`, `DELETE /api/photos/:id` et le futur `PATCH /api/photos/order` passent par le middleware `exigerAdmin` (401 sinon). `GET /api/photos` et `GET /api/photos/:id/file` restent publics : la galerie se visite sans compte.
 
 `GET /api/photos` accepte `?album=` pour filtrer. L'upload accepte les champs `file` (obligatoire), `titre` et `album` ; sans titre, le nom du fichier est utilisé. Erreurs : 415 si le fichier n'est pas une image, 413 au-delà de 25 Mo (même limite que `client_max_body_size` dans le proxy), 404 sur un identifiant inconnu ou mal formé.
 
@@ -60,13 +65,32 @@ Le champ de regroupement s'appelle `album` et non `collection` : Mongoose réser
 
 `mimeType` est stocké pour que `GET /api/photos/:id/file` renvoie le bon `Content-Type` sans interroger MinIO en plus.
 
+### Authentification
+Dépendances : `express-session` + `connect-mongo`. Aucun objet Kubernetes supplémentaire, le magasin de sessions est la base Mongo existante (collection `sessions`), et `connect-mongo` réutilise le client Mongoose déjà connecté (`clientPromise`) plutôt que d'ouvrir un second pool.
+
+Les identifiants ne sont pas en base mais dans trois variables d'environnement, donc dans le Secret : `ADMIN_USER`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`. On stocke une **empreinte scrypt**, jamais le mot de passe : une variable d'environnement se retrouve vite dans un `kubectl describe`, un vidage de crash ou un journal. `cd backend && npm run hash -- "mot de passe"` produit la valeur.
+
+- **L'empreinte utilise `:` comme séparateur, et non `$` comme le veut l'usage PHC.** Une empreinte en `scrypt$16384$…` placée dans un `.env` est mutilée par `docker compose`, qui y lit `$16384` comme une variable à interpoler. Vérifié : quatre avertissements « variable is not set » et une empreinte tronquée.
+- Hachage et vérification avec `node:crypto` (`scrypt`, `timingSafeEqual`) : aucune dépendance native à compiler dans l'image Alpine. Une vérification coûte ~32 ms, ce qui freine déjà une attaque par force brute.
+- `POST /api/session` vérifie le mot de passe **même quand l'identifiant est faux**, et jette le résultat : sinon un mauvais identifiant répondrait bien plus vite qu'un mauvais mot de passe, ce qui révélerait le bon identifiant. Message d'erreur unique pour la même raison.
+- `req.session.regenerate()` à la connexion : un cookie déposé avant la connexion ne doit pas devenir une session authentifiée (fixation de session).
+- Limite de tentatives en mémoire (10 échecs par IP, fenêtre glissante de 15 min, `src/auth/limite.js`). En mémoire, donc propre à chaque replica : avec deux pods un attaquant dispose du double d'essais. Compromis assumé, le but étant de casser l'automatisation.
+- Cookie `httpOnly`, `sameSite: "lax"` — **c'est ce qui tient lieu de protection CSRF**, le navigateur n'envoyant pas le cookie sur une requête venue d'un autre site. Pas de jeton CSRF, c'est un choix.
+- `COOKIE_SECURE` est faux en compose et sur minikube : un cookie `secure` est ignoré sur une origine en HTTP, et la session ne tiendrait jamais. À passer à `true` derrière du TLS.
+- `app.set("trust proxy", 1)` dans `index.js` : l'API est toujours derrière un intermédiaire (proxy nginx, Ingress). Sans cette ligne `req.ip` vaudrait l'adresse du proxy pour tout le monde — la limite de tentatives serait globale — et un cookie `secure` ne serait jamais posé.
+
 ## Frontend
 Échafaudé avec `npm create vite@latest frontend -- --template react` (create-vite 9, template `react` en JavaScript — le `--` est obligatoire pour que npm transmette l'option). Pas de Tailwind, du CSS simple.
 Scripts : `npm run dev` (port 5173), `npm run build` (sort dans `dist/`), `npm run preview`, `npm run lint` (oxlint).
 `vite.config.js` : proxy `/api` vers `http://localhost:3001` en dev. `nginx.conf` : fallback vers `index.html` (indispensable pour le routage SPA) et cache long sur `/assets/`. Drag & drop futur : dnd-kit.
 Dépendance : lenis (défilement lissé).
-Composants écrits : Gallery (présentationnel), AlbumNav, AlbumSection, PhotoCard, UploadForm, ChampAlbum, ModaleUpload, ModaleConfirmation et Lightbox.
-Hooks : `usePhotos` (récupération, regroupement en sections, liste à plat, liste des albums, `rafraichir`) appelé par `App` ; `useRevelationAuScroll` (fondu à l'entrée) ; `useDialogue` (ouverture d'un `<dialog>` et mise en pause de Lenis, partagé par les deux modales).
+Composants écrits : Gallery (présentationnel), AlbumNav, AlbumSection, PhotoCard, UploadForm, ChampAlbum, ModaleUpload, ModaleConfirmation, ModaleConnexion, Lightbox et SessionProvider.
+Hooks : `usePhotos` (récupération, regroupement en sections, liste à plat, liste des albums, `rafraichir`) appelé par `App` ; `useRevelationAuScroll` (fondu à l'entrée) ; `useDialogue` (ouverture d'un `<dialog>` et mise en pause de Lenis, partagé par les quatre fenêtres) ; `useSession` (contexte d'état de connexion).
+
+**Connexion** : `SessionProvider` enveloppe l'application dans `main.jsx` et interroge `GET /api/session` au chargement. Un contexte plutôt qu'une prop de plus, qui devrait traverser `Gallery` et `AlbumSection` — qui n'en ont aucun usage — pour atteindre `PhotoCard`.
+- bouton « Connexion » / « Déconnexion » dans l'en-tête, visible de tous. Rien n'est affiché tant que l'API n'a pas répondu, sinon l'en-tête clignoterait au chargement ;
+- déconnecté, ni le bouton « Ajouter des photos » ni les corbeilles ne sont rendus. **Ce n'est qu'un confort : la vraie barrière est `exigerAdmin` côté API** — masquer un bouton n'empêche personne d'envoyer un `DELETE` à la main ;
+- les erreurs du client API portent leur `statut` HTTP. Sur un 401, `signalerExpiration()` repasse l'interface en visiteur : une session expirée en cours de visite ne laisse pas des commandes qui échoueraient toutes.
 
 La galerie est découpée en **une section par album**, avec une barre de navigation collée en haut. Les photos sans album vont dans une section « Autres », placée en dernier ; les autres albums sont triés par nom avec un `Intl.Collator("fr")`. Chaque section a son ancre (`#album-<nom-sans-accent>`) et sa propre grille justifiée. Attention : un album nommé littéralement « Autres » fusionnerait avec la section des photos sans album.
 
@@ -118,7 +142,9 @@ my-photo-gallery/
 │   └── src/ (main.jsx, App.jsx, api/photos.js, components/, hooks/, styles/)
 ├── backend/
 │   ├── Dockerfile, .dockerignore, package.json, .env.example
-│   └── src/ (index.js, config.js, db/mongo.js, storage/minio.js, models/Photo.js, routes/photos.js, routes/health.js)
+│   ├── scripts/hacher-mot-de-passe.js   # npm run hash
+│   └── src/ (index.js, config.js, db/mongo.js, storage/minio.js, models/Photo.js,
+│            auth/{session,motDePasse,limite}.js, routes/{photos,health,session}.js)
 └── k8s/
     ├── kustomization.yaml, namespace.yaml, secrets.example.yaml, configmap.yaml, ingress.yaml
     ├── mongodb/ (statefulset.yaml, service.yaml)
@@ -141,6 +167,8 @@ Ils décrivent les mêmes identifiants vus de deux endroits : dans le compose l'
 
 Ports publiés sur l'hôte : proxy **8080** (seul point d'entrée de l'app), Mongo **27017**, MinIO **9000** et console **9001**. Le front et l'API ne publient aucun port : ils passent par le proxy.
 
+`ADMIN_USER`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET` et `COOKIE_SECURE` s'ajoutent aux deux fichiers. Changer `SESSION_SECRET` invalide toutes les sessions ouvertes.
+
 Piège : MongoDB ne crée son utilisateur root qu'au premier démarrage, quand le volume est vide. Changer `MONGO_USER`/`MONGO_PASSWORD` ensuite exige un `docker compose down -v`. MinIO, lui, relit ses identifiants à chaque démarrage.
 
 ## État actuel
@@ -151,7 +179,6 @@ Reste à faire :
 - **Performance du défilement** — deux réglages identifiés mais pas encore appliqués, faute d'avoir pu juger à l'écran : le `backdrop-filter: blur(8px)` de `.album-nav` est le premier suspect de saccades (sur un élément collé, le flou est recalculé à chaque image, et Lenis repositionne à chaque image), et `lerp` laissé à 0,1 donne une sensation de flottement qu'un passage à 0,15–0,2 atténuerait.
 - **Miniatures** — les images sont servies en pleine résolution, 4 à 7 fois plus grandes que leur taille d'affichage. Sans conséquence sur des images de test légères, mais ce sera la cause dominante de saccades avec de vraies photos : c'est l'argument pour avancer le worker `sharp`.
 - **Backend** — `PATCH /api/photos/order` (réordonnancement), prévu plus tard.
-- **Authentification** — à écrire après les manifestes (voir les choix de conception).
 - **`k8s/`** — dossier vide, c'est la partie évaluée. À décider avant de commencer : comment les images arrivent dans minikube (construire dans son démon via `eval $(minikube docker-env)` et `imagePullPolicy: Never`, ou passer par un registre).
 
 ### Pièges rencontrés, à ne pas réintroduire

@@ -1,0 +1,37 @@
+/* Fenêtre étroite : deux champs et un bouton. */
+.modale--connexion {
+  width: min(22rem, calc(100vw - 2rem));
+}
+
+.connexion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.connexion-champ {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Même traitement que les champs du formulaire d'upload. */
+.connexion input {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--texte-discret) 45%, transparent);
+  border-radius: var(--rayon);
+  font: inherit;
+  color: var(--texte);
+  background: var(--fond);
+}
+
+.connexion input:focus-visible {
+  outline: 2px solid var(--texte-discret);
+  outline-offset: 1px;
+}
+
+.connexion-erreur {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--texte-erreur);
+}

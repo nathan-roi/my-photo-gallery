@@ -3,12 +3,20 @@
 // à configurer côté front.
 const BASE = "/api/photos";
 
+function erreurReponse(reponse, message) {
+  const erreur = new Error(message);
+  // Le statut sert à repérer un 401 : la session a expiré, l'interface doit
+  // repasser en visiteur plutôt que d'afficher un échec inexplicable.
+  erreur.statut = reponse.status;
+  return erreur;
+}
+
 export async function listerPhotos({ album } = {}) {
   const parametres = album ? `?album=${encodeURIComponent(album)}` : "";
   const reponse = await fetch(`${BASE}${parametres}`);
 
   if (!reponse.ok) {
-    throw new Error(`Liste des photos indisponible (HTTP ${reponse.status})`);
+    throw erreurReponse(reponse, `Liste des photos indisponible (HTTP ${reponse.status})`);
   }
 
   return reponse.json();
@@ -34,7 +42,7 @@ export async function envoyerPhoto({ fichier, album, titre }) {
     // L'API répond { error } ; le proxy nginx, lui, renvoie du HTML sur un 413,
     // d'où le repli sur le code de statut.
     const details = await reponse.json().catch(() => null);
-    throw new Error(details?.error ?? `Envoi refusé (HTTP ${reponse.status})`);
+    throw erreurReponse(reponse, details?.error ?? `Envoi refusé (HTTP ${reponse.status})`);
   }
 
   return reponse.json();
@@ -46,6 +54,6 @@ export async function supprimerPhoto(id) {
   // L'API renvoie 204 sans corps : il n'y a rien à analyser en cas de succès.
   if (!reponse.ok) {
     const details = await reponse.json().catch(() => null);
-    throw new Error(details?.error ?? `Suppression refusée (HTTP ${reponse.status})`);
+    throw erreurReponse(reponse, details?.error ?? `Suppression refusée (HTTP ${reponse.status})`);
   }
 }

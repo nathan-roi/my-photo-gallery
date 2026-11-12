@@ -5,6 +5,7 @@ import {
   classesFondu,
   useRevelationAuScroll,
 } from "../hooks/useRevelationAuScroll.js";
+import { useSession } from "../hooks/useSession.js";
 import ModaleConfirmation from "./ModaleConfirmation.jsx";
 
 export default function PhotoCard({ photo, onSupprimee, onOuvrir }) {
@@ -12,6 +13,7 @@ export default function PhotoCard({ photo, onSupprimee, onOuvrir }) {
   const [suppression, setSuppression] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [carte, visible] = useRevelationAuScroll();
+  const { connecte, signalerExpiration } = useSession();
 
   async function supprimer() {
     setSuppression(true);
@@ -27,6 +29,7 @@ export default function PhotoCard({ photo, onSupprimee, onOuvrir }) {
       // où l'action a été demandée.
       setErreur(err.message);
       setSuppression(false);
+      if (err.statut === 401) signalerExpiration();
       console.error("Suppression impossible :", err);
     }
   }
@@ -63,17 +66,21 @@ export default function PhotoCard({ photo, onSupprimee, onOuvrir }) {
         />
       </button>
 
-      <button
-        type="button"
-        className="photo-supprimer"
-        onClick={() => setDemande(true)}
-        aria-label={`Supprimer ${photo.titre}`}
-      >
-        {/* Le masque est sur ce <span> et non sur le bouton : porté par le
-            bouton, il découperait aussi la pastille ronde et son fond sombre
-            disparaîtrait. */}
-        <span className="icone-corbeille" aria-hidden="true" />
-      </button>
+      {/* Masquer la corbeille n'est qu'un confort : la vraie barrière est le
+          middleware de l'API, qui refuse le DELETE sans session. */}
+      {connecte && (
+        <button
+          type="button"
+          className="photo-supprimer"
+          onClick={() => setDemande(true)}
+          aria-label={`Supprimer ${photo.titre}`}
+        >
+          {/* Le masque est sur ce <span> et non sur le bouton : porté par le
+              bouton, il découperait aussi la pastille et son fond sombre
+              disparaîtrait. */}
+          <span className="icone-corbeille" aria-hidden="true" />
+        </button>
+      )}
 
       {demande && (
         <ModaleConfirmation

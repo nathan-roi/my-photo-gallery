@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { envoyerPhoto } from "../api/photos.js";
+import { useSession } from "../hooks/useSession.js";
 import ChampAlbum from "./ChampAlbum.jsx";
 import "../styles/upload.css";
 
@@ -33,6 +34,7 @@ export default function UploadForm({ albums, onTermine }) {
   // Envoi en cours : { fait, total }, ou null au repos.
   const [progression, setProgression] = useState(null);
   const [echecs, setEchecs] = useState([]);
+  const { signalerExpiration } = useSession();
 
   const envoiEnCours = progression !== null;
 
@@ -161,6 +163,9 @@ export default function UploadForm({ albums, onTermine }) {
         // à être réessayés sans risquer de doublon.
         retirer(entree.id);
       } catch (err) {
+        // Session expirée en cours d'envoi : inutile d'insister sur les
+        // fichiers suivants, ils seront tous refusés.
+        if (err.statut === 401) signalerExpiration();
         echoues.push({ nom: entree.fichier.name, message: err.message });
       }
     }

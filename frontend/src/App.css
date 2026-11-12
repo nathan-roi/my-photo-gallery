@@ -5,7 +5,7 @@
   padding: 2.5rem 1.25rem 4rem;
 }
 
-/* Titre et bouton sur la même ligne, le bouton poussé à droite. */
+/* Titre et boutons sur la même ligne, les boutons poussés à droite. */
 .app-entete {
   display: flex;
   align-items: center;
@@ -19,6 +19,13 @@
   font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.app-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .bouton-ajouter {
@@ -37,5 +44,26 @@
 .bouton-ajouter:hover,
 .bouton-ajouter:focus-visible {
   border-color: var(--texte-discret);
+  background: var(--fond-carte);
+}
+
+/* Connexion / déconnexion : même gabarit que le bouton d'ajout, mais sans
+   contour, pour qu'il reste l'action secondaire de l'en-tête. */
+.bouton-session {
+  flex-shrink: 0;
+  padding: 0.45rem 0.65rem;
+  border: none;
+  border-radius: var(--rayon);
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--texte-discret);
+  background: none;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.bouton-session:hover,
+.bouton-session:focus-visible {
+  color: var(--texte);
   background: var(--fond-carte);
 }

@@ -1,15 +1,24 @@
 import express from "express";
 
+import { middlewareSession } from "./auth/session.js";
 import { config } from "./config.js";
 import { connectMongo, disconnectMongo } from "./db/mongo.js";
 import { ensureBucket } from "./storage/minio.js";
 import healthRoutes from "./routes/health.js";
 import photoRoutes from "./routes/photos.js";
+import sessionRoutes from "./routes/session.js";
 
 const app = express();
 
+// L'API est toujours derrière un intermédiaire (proxy nginx en compose,
+// Ingress en Kubernetes). Sans cette ligne, `req.ip` serait l'adresse du
+// proxy pour tout le monde et un cookie `secure` ne serait jamais posé.
+app.set("trust proxy", 1);
+
 app.use(express.json());
+app.use(middlewareSession());
 app.use("/api", healthRoutes);
+app.use("/api", sessionRoutes);
 app.use("/api", photoRoutes);
 
 // Gestionnaire d'erreurs : Express 5 y envoie aussi les rejets des handlers

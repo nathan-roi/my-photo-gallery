@@ -4,8 +4,10 @@ import "lenis/dist/lenis.css";
 
 import Gallery from "./components/Gallery.jsx";
 import Lightbox from "./components/Lightbox.jsx";
+import ModaleConnexion from "./components/ModaleConnexion.jsx";
 import ModaleUpload from "./components/ModaleUpload.jsx";
 import { usePhotos } from "./hooks/usePhotos.js";
+import { useSession } from "./hooks/useSession.js";
 import "./App.css";
 
 // Options de Lenis. Les valeurs non listées restent celles par défaut, dont
@@ -27,6 +29,8 @@ function App() {
   const { sections, photos, albums, chargement, erreur, rafraichir } =
     usePhotos();
   const [modaleOuverte, setModaleOuverte] = useState(false);
+  const [connexionOuverte, setConnexionOuverte] = useState(false);
+  const { connecte, chargement: sessionInconnue, deconnecter } = useSession();
 
   // La photo ouverte est retenue par son identifiant et non par son rang : un
   // rafraîchissement de la liste décalerait les rangs sous la visionneuse.
@@ -46,6 +50,12 @@ function App() {
     }
   }
 
+  function seDeconnecter() {
+    deconnecter().catch((err) => {
+      console.error("Déconnexion impossible :", err);
+    });
+  }
+
   return (
     <>
       {/* root : Lenis prend le défilement de la page entière. Le composant
@@ -57,13 +67,33 @@ function App() {
         <header className="app-entete">
           <h1 className="app-titre">Ma galerie photo</h1>
 
-          <button
-            type="button"
-            className="bouton-ajouter"
-            onClick={() => setModaleOuverte(true)}
-          >
-            Ajouter des photos
-          </button>
+          <div className="app-actions">
+            {/* Les commandes d'édition n'apparaissent que connecté. Ce n'est
+                qu'un confort : l'API refuse l'écriture sans session. */}
+            {connecte && (
+              <button
+                type="button"
+                className="bouton-ajouter"
+                onClick={() => setModaleOuverte(true)}
+              >
+                Ajouter des photos
+              </button>
+            )}
+
+            {/* Tant que l'API n'a pas répondu, aucun des deux : les afficher
+                puis les permuter ferait clignoter l'en-tête au chargement. */}
+            {!sessionInconnue && (
+              <button
+                type="button"
+                className="bouton-session"
+                onClick={
+                  connecte ? seDeconnecter : () => setConnexionOuverte(true)
+                }
+              >
+                {connecte ? "Déconnexion" : "Connexion"}
+              </button>
+            )}
+          </div>
         </header>
 
         <Gallery
@@ -81,6 +111,10 @@ function App() {
           indexInitial={indexOuvert}
           onFermer={() => setPhotoOuverte(null)}
         />
+      )}
+
+      {connexionOuverte && (
+        <ModaleConnexion onFermer={() => setConnexionOuverte(false)} />
       )}
 
       <ModaleUpload

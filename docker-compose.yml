@@ -47,6 +47,11 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET}
+      ADMIN_USER: ${ADMIN_USER}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
+      SESSION_SECRET: ${SESSION_SECRET}
+      # L'origine est en HTTP en local : un cookie `secure` y serait ignoré.
+      COOKIE_SECURE: "false"
     depends_on:
       mongodb:
         condition: service_healthy

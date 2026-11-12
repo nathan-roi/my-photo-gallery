@@ -6,14 +6,17 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/index.js",
-    "dev": "nodemon --exec \"node --env-file-if-exists=.env\" src/index.js"
+    "dev": "nodemon --exec \"node --env-file-if-exists=.env\" src/index.js",
+    "hash": "node scripts/hacher-mot-de-passe.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "connect-mongo": "^6.0.0",
     "express": "^5.3.0",
+    "express-session": "^1.19.0",
     "minio": "^8.0.7",
     "mongoose": "^9.11.2",
     "multer": "^2.4.0",
