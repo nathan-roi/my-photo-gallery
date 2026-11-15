@@ -200,15 +200,16 @@ minikube image load galerie-backend:1.0
 minikube image load galerie-frontend:1.0
 ```
 
-### L'image de MinIO doit être chargée elle aussi
-**MinIO ne distribue plus son image communautaire en accès anonyme.** Docker Hub *et* quay.io répondent `insufficient_scope: authorization failed`, sur le tag comme sur le digest (vérifié le 2026-11-12, y compris `minio/minio:latest`). L'image présente en local vient d'un `docker pull` antérieur à cette restriction, et c'est elle qu'on charge :
+### L'image de MinIO vient d'un miroir sur ghcr.io
+**MinIO ne distribue plus son image communautaire en accès anonyme.** Docker Hub *et* quay.io répondent `insufficient_scope: authorization failed`, sur le tag comme sur le digest (vérifié les 2026-11-12 et 2026-11-15, `minio/minio:latest` compris), alors que `mongo:8` et `nginx:alpine` répondent 200 par le même chemin au même moment — ce n'est donc pas un problème de réseau.
 
-```
-docker tag minio/minio:latest minio/minio:RELEASE.2025-09-07T16-13-09Z
-minikube image load minio/minio:RELEASE.2025-09-07T16-13-09Z
-```
+Conséquence : le déploiement ne pouvait pas fonctionner sur une machine neuve, puisque l'image ne venait que du cache Docker local, d'un `docker pull` antérieur à la restriction. Et c'est l'exigence centrale du TP qui en dépendait.
 
-D'où le `imagePullPolicy: Never` sur MinIO, qui n'était pas prévu. `mongo:8` et `busybox:1.37`, eux, se téléchargent normalement. Si le déploiement doit tourner sur une machine neuve, c'est le point qui cassera en premier.
+Corrigé en republiant cette image en cache sur **`ghcr.io/nathan-roi/minio:RELEASE.2025-09-07T16-13-09Z`**, en public. C'est l'image officielle telle quelle, sans modification. Le manifeste pointe dessus et **n'a donc pas d'`imagePullPolicy: Never`**, contrairement aux deux images du projet.
+
+Écartées en chemin : compiler MinIO depuis ses sources (faisable — le dépôt GitHub est public et le tag existe — mais c'est un gros projet Go, plusieurs minutes de compilation et un risque de débogage du système de construction d'autrui), et remplacer MinIO par SeaweedFS ou Zenko CloudServer (images disponibles, API S3, mais c'est un changement d'infrastructure à retester entièrement).
+
+`mongo:8` et `busybox:1.37` se téléchargent normalement, il n'y a rien à faire pour eux.
 
 ### Ordre de démarrage : initContainer, pas CrashLoopBackOff
 L'API sort en erreur si MongoDB ou MinIO sont injoignables au démarrage (choix volontaire, cf. `index.js`). Un `initContainer` busybox attend donc l'ouverture du port 27017 puis `/minio/health/live` avant de lancer le conteneur de l'API.
@@ -250,7 +251,7 @@ L'API, elle, supporte `drop: ["ALL"]` **et** `readOnlyRootFilesystem: true` — 
 ### Détails qui ont leur raison
 - **Le Secret réel n'est pas versionné**, mais `kustomization.yaml` référence bien `secret.yaml`. Conséquence voulue : sans `cp k8s/secrets.example.yaml k8s/secret.yaml`, `kubectl apply -k k8s/` échoue d'emblée — préférable à un déploiement avec des identifiants d'exemple.
 - **Service headless pour MongoDB** (`clusterIP: None`), ClusterIP ordinaire pour MinIO : le StatefulSet de Mongo suit le motif standard, MinIO n'a qu'une instance et personne n'a besoin de joindre un pod nommément. Il faudrait le passer en headless pour un MinIO distribué.
-- **MinIO épinglé à sa version réelle** (`RELEASE.2025-09-07T16-13-09Z`, le label `release` de l'image) et non `latest` : avec le tag `latest`, Kubernetes repasse en `imagePullPolicy: Always`.
+- **MinIO épinglé à sa version réelle** (`RELEASE.2025-09-07T16-13-09Z`, le label `release` de l'image) et non `latest` : avec le tag `latest`, Kubernetes repasse en `imagePullPolicy: Always`. Le tag du miroir reprend celui de l'image officielle, pour que le manifeste dise ce qui tourne.
 - **`labels:` avec `includeSelectors: false`** dans `kustomization.yaml` : un label ajouté aux selectors des Deployments les rendrait impossibles à modifier ensuite, les selectors étant immuables.
 - **Les PVC survivent à `kubectl delete -k k8s/`** : le `volumeClaimTemplates` d'un StatefulSet ne supprime pas ses PVC. Vérifié — un document témoin écrit dans Mongo, le pod `mongodb-0` supprimé, le document toujours là après recréation. Pour repartir de zéro : `kubectl delete pvc -n galerie-photo --all`.
 - **Trois sondes sur l'API**, et c'est pour elles que `/api/health` et `/api/ready` sont distincts : `startupProbe` sur `health` (60 s de marge), `livenessProbe` sur `health` (ne teste pas Mongo, sinon un hoquet de la base redémarrerait tous les pods), `readinessProbe` sur `ready` (retire le pod du Service sans le tuer).

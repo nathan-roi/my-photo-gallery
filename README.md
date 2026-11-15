@@ -2,7 +2,7 @@
 
 Projet de TP Kubernetes — Université Savoie Mont Blanc (INFO910).
 
-**Auteur :** Nathan Roi — projet réalisé seul, sans binôme.
+**Auteur :** Nathan Roi
 
 ## Ce que fait l'application
 
@@ -261,18 +261,18 @@ minikube image load galerie-backend:1.0
 minikube image load galerie-frontend:1.0
 ```
 
-L'image de MinIO doit l'être aussi, pour une raison de circonstance : **MinIO ne distribue
-plus son image communautaire en accès anonyme.** Docker Hub et quay.io répondent tous deux
-`insufficient_scope: authorization failed`, sur le tag comme sur le digest. On charge donc
-celle que `docker compose` a déjà en cache local :
+C'est pourquoi les deux Deployments portent `imagePullPolicy: Never`. Les trois autres
+images (`mongo:8`, `busybox:1.37` et MinIO) se téléchargent normalement, il n'y a rien à
+faire pour elles.
 
-```bash
-docker tag minio/minio:latest minio/minio:RELEASE.2025-09-07T16-13-09Z
-minikube image load minio/minio:RELEASE.2025-09-07T16-13-09Z
-```
-
-C'est pourquoi les trois conteneurs portent `imagePullPolicy: Never`. `mongo:8` et
-`busybox:1.37`, eux, se téléchargent normalement.
+> **Pourquoi MinIO vient de `ghcr.io/nathan-roi/minio` et non de `minio/minio`**
+>
+> MinIO ne distribue plus son image communautaire en accès anonyme : Docker Hub et quay.io
+> répondent tous deux `insufficient_scope: authorization failed`, sur le tag comme sur le
+> digest, alors que `mongo:8` et `nginx:alpine` passent par le même chemin sans problème.
+> Le manifeste pointe donc sur un miroir public : l'image officielle
+> `RELEASE.2025-09-07T16-13-09Z`, republiée telle quelle et sans modification, pour que le
+> déploiement fonctionne sur une machine neuve.
 
 > **À ne pas tenter :** construire directement dans le démon de minikube via
 > `eval $(minikube docker-env)`. minikube v1.39 utilise le runtime **containerd**, et sa
@@ -389,7 +389,7 @@ kubectl logs -f -n galerie-photo -l app=backend --prefix   # les deux replicas �
 
 | Symptôme | Cause probable |
 |---|---|
-| `ErrImagePull` / `ImagePullBackOff` | image non chargée dans minikube (étape 3) |
+| `ErrImagePull` / `ImagePullBackOff` | image du projet non chargée dans minikube (étape 3) |
 | `Init:0/1` qui dure | MongoDB ou MinIO pas encore prêt — c'est normal une à deux minutes |
 | `CreateContainerConfigError` | une clé manque dans `k8s/secret.yaml` |
 | 413 à l'upload | l'annotation `proxy-body-size` de l'Ingress |
@@ -416,9 +416,9 @@ Deux points à changer, et un à garder en tête :
 - `COOKIE_SECURE` doit passer à `true` dans `k8s/configmap.yaml` dès qu'il y a du TLS. Il est
   à `false` ici parce qu'un cookie `secure` est **ignoré** sur une origine en HTTP, et que la
   session ne tiendrait alors jamais.
-- Les images doivent venir d'un registre plutôt que d'un `minikube image load` :
+- Les images du projet doivent venir d'un registre plutôt que d'un `minikube image load` :
   décommenter le bloc `images:` de `k8s/kustomization.yaml` et retirer les
-  `imagePullPolicy: Never`.
+  `imagePullPolicy: Never` des deux Deployments. MinIO, lui, vient déjà d'un registre.
 - La limite de tentatives de connexion est **en mémoire**, donc propre à chaque replica :
   avec deux pods, un attaquant dispose du double d'essais. Compromis assumé, le but étant de
   casser l'automatisation, pas de résister à une attaque distribuée.

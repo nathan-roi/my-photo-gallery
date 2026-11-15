@@ -21,22 +21,23 @@ spec:
     spec:
       containers:
         - name: minio
-          # Image chargée à la main dans minikube, comme celles du projet, et
-          # non téléchargée depuis un registre : MinIO ne distribue plus son
-          # image communautaire en accès anonyme. Docker Hub et quay.io
-          # répondent tous deux « insufficient_scope: authorization failed »,
-          # sur le tag comme sur le digest (vérifié le 2026-11-12).
+          # Miroir public de l'image officielle, et non `minio/minio` :
+          # **MinIO ne distribue plus son image communautaire en accès
+          # anonyme.** Docker Hub et quay.io répondent tous deux
+          # « insufficient_scope: authorization failed », sur le tag comme sur
+          # le digest (vérifié le 2026-11-15), alors que `mongo:8` et
+          # `busybox:1.37` se téléchargent normalement par le même chemin.
           #
-          # L'image vient donc du cache Docker local, d'un `docker pull`
-          # antérieur à cette restriction, et doit être chargée avant le
-          # déploiement :
-          #   docker tag minio/minio:latest minio/minio:RELEASE.2025-09-07T16-13-09Z
-          #   minikube image load minio/minio:RELEASE.2025-09-07T16-13-09Z
+          # Cette image est donc l'image officielle RELEASE.2025-09-07T16-13-09Z
+          # republiée telle quelle, sans modification, pour que le déploiement
+          # fonctionne sur une machine neuve. Elle se télécharge sans
+          # authentification, d'où l'absence d'`imagePullPolicy: Never` ici,
+          # contrairement aux deux images du projet.
           #
           # Le tag reprend la version réelle (label `release` de l'image) plutôt
-          # que `latest`, pour que le manifeste dise ce qui tourne.
-          image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-          imagePullPolicy: Never
+          # que `latest`, qui ferait repasser Kubernetes en
+          # imagePullPolicy: Always.
+          image: ghcr.io/nathan-roi/minio:RELEASE.2025-09-07T16-13-09Z
           args: ["server", "/data", "--console-address", ":9001"]
           ports:
             - name: api

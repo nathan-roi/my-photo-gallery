@@ -24,6 +24,10 @@ k8s/**/*.secret.yaml
 *.key
 *.crt
 
+# Binaires telecharges a la racine (kubectl s'installe dans /usr/local/bin)
+/kubectl
+/minikube
+
 # Builds
 dist/
 build/
